@@ -1,0 +1,13 @@
+pub const NPROC = 64; // maximum number of processes
+pub const n_cpu = 8; // maximum number of CPUs
+pub const n_ofile = 16; // open files per process
+pub const n_file = 100; // open files per system
+pub const n_inode = 50; // maximum number of active i-nodes
+pub const n_dev = 10; // maximum major device number
+pub const root_dev = 1; // device number of file system root disk
+pub const max_arg = 32; // max exec arguments
+pub const max_opblocks = 10; // max # of blocks any FS op writes
+pub const log_size = (max_opblocks * 3); // max data blocks in on-disk log
+pub const n_buf = (max_opblocks * 3); // size of disk block cache
+pub const fs_size = 2000; // size of file system in blocks
+pub const max_path = 128; // maximum file path name
