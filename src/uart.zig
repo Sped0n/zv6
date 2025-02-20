@@ -147,3 +147,24 @@ pub fn getChar() ?u8 {
         return null;
     }
 }
+
+pub fn dumbPrint(str: []const u8) void {
+    for (str) |c| {
+        putCharSync(c);
+    }
+    putCharSync('\n');
+}
+
+pub fn dumbPanic(str: []const u8) void {
+    dumbPrint(str);
+    while (true) {}
+}
+
+pub fn dumbAssert(cond: bool, info: []const u8) void {
+    if (cond) return;
+    const assert_str: []const u8 = "assert failed: ";
+    for (assert_str) |c| {
+        putCharSync(c);
+    }
+    dumbPanic(info);
+}

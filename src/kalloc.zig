@@ -12,12 +12,6 @@ const Block = struct {
 var lock: Spinlock = undefined;
 var freelist: ?*Block = null;
 
-fn print(str: []const u8) void {
-    for (str) |c| {
-        uart.putCharSync(c);
-    }
-}
-
 const Self = @This();
 
 pub fn kinit() void {
@@ -43,7 +37,7 @@ pub fn kfree(pa: *anyopaque) void {
     // not aligned.
     if (pa_in_usize % riscv.pg_size != 0) {
         // TODO: panic
-        print("not aligned\n");
+        uart.dumbPanic("kfree not aligned");
         return;
     }
 
@@ -52,7 +46,7 @@ pub fn kfree(pa: *anyopaque) void {
         @intFromPtr(end),
     ) or pa_in_usize >= memlayout.phy_stop) {
         // TODO: panic
-        print("out of range\n");
+        uart.dumbPanic("kfree out of range");
         return;
     }
 
