@@ -433,6 +433,8 @@ pub inline fn sfenceVma() void {
     asm volatile ("sfence.vma zero, zero");
 }
 
+// Page table ------------------------------------------------------------------
+
 pub const Pte = usize;
 pub const PageTable = [*]Pte; // 512 PTEs
 
