@@ -1,7 +1,7 @@
 const Spinlock = @import("spinlock.zig");
 const memlayout = @import("memlayout.zig");
 const riscv = @import("riscv.zig");
-const uart = @import("uart.zig");
+const panic = @import("uart.zig").dumbPanic;
 
 const end: *anyopaque = @ptrCast(@extern([*c]c_char, .{ .name = "end" }));
 
@@ -37,7 +37,7 @@ pub fn kfree(pa: *anyopaque) void {
     // not aligned.
     if (pa_in_usize % riscv.pg_size != 0) {
         // TODO: panic
-        uart.dumbPanic("kfree not aligned");
+        panic("kfree not aligned");
         return;
     }
 
@@ -46,7 +46,7 @@ pub fn kfree(pa: *anyopaque) void {
         @intFromPtr(end),
     ) or pa_in_usize >= memlayout.phy_stop) {
         // TODO: panic
-        uart.dumbPanic("kfree out of range");
+        panic("kfree out of range");
         return;
     }
 
