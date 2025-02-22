@@ -67,8 +67,8 @@ pub const phy_stop = kernel_base + 128 * 1024 * 1024;
 // in both user and kernel space.
 pub const trampoline: usize = riscv.maxva - @as(usize, riscv.pg_size);
 
-// map kernel stacks beneath the trampoline,
-// each surrounded by invalid guard pages.
+///map kernel stacks beneath the trampoline,
+///each surrounded by invalid guard pages.
 pub inline fn kStack(p: usize) usize {
     return trampoline - (p + 1) * 2 * riscv.pg_size;
 }

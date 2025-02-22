@@ -6,6 +6,7 @@ const proc = @import("proc.zig");
 const Cpu = proc.Cpu;
 const uart = @import("uart.zig");
 const kalloc = @import("kalloc.zig");
+const vm = @import("vm.zig");
 
 var started = false;
 
@@ -26,28 +27,15 @@ pub fn main() void {
         uart.dumbPrint("zv6 hello world");
         kalloc.kinit();
 
-        // Test 2: Allocate a page
-        const page1 = kalloc.kalloc();
-        uart.dumbAssert(page1 != null, "page1 != null");
-
-        // Test 3: Allocate another page
-        const page2 = kalloc.kalloc();
-        uart.dumbAssert(page2 != null, "page2 != null");
-        uart.dumbAssert(page1 != page2, "page1 != page2");
-
-        // Test 4: Free a page and reallocate
-        kalloc.kfree(page1.?);
-        const page3 = kalloc.kalloc();
-        uart.dumbAssert(page3 != null, "page3 != null");
-        uart.dumbAssert(page1 == page3, "page1 == page3");
-
         // Test 5: Try to free invalid address
         //kalloc.kfree(@ptrFromInt(0x1000)); // Should not crash, just return
 
         // Test 6: Try to free unaligned address
         //kalloc.kfree(@ptrFromInt(0x1001)); // Should not crash, just return
 
-        uart.dumbPrint("All tests passed!");
+        // uart.dumbPrint("All kalloc tests passed!");
+
+        vm.kvmInit();
 
         @atomicStore(
             bool,

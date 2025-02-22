@@ -1,6 +1,10 @@
 const param = @import("param.zig");
 const Spinlock = @import("spinlock.zig");
 const riscv = @import("riscv.zig");
+const kalloc = @import("kalloc.zig");
+const memlayout = @import("memlayout.zig");
+const vm = @import("vm.zig");
+const panic = @import("uart.zig").dumbPanic;
 
 // Saved registers for kernel context switches.
 pub const Context = extern struct {
@@ -116,3 +120,31 @@ pub const Proc = struct {
     //cwd: ?*Inode, // Current directory
     name: [16]u8, // Process name (debugging)
 };
+
+pub var procs: [param.n_proc]Proc = undefined;
+
+pub fn mapStacks(kpgtbl: riscv.PageTable) void {
+    // TODO: init procs
+
+    // NOTE: don't try to iterate on uninitialized procs
+    // see https://github.com/ziglang/zig/issues/13934
+    for (0..param.n_proc) |i| {
+        const phy_addr: usize = @intFromPtr(kalloc.kalloc() orelse {
+            return panic("proc map stack kalloc err");
+        });
+        const virt_addr: usize = memlayout.kStack(
+            @intFromPtr(&procs[i]) - @intFromPtr(&procs[0]),
+        );
+        vm.kvmMap(
+            kpgtbl,
+            virt_addr,
+            phy_addr,
+            riscv.pg_size,
+            @intFromEnum(
+                riscv.PteFlag.r,
+            ) | @intFromEnum(
+                riscv.PteFlag.w,
+            ),
+        );
+    }
+}
