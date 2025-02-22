@@ -435,8 +435,9 @@ pub inline fn sfenceVma() void {
 
 // Page table ------------------------------------------------------------------
 
+///Page Table Entry
 pub const Pte = usize;
-pub const PageTable = [*]Pte; // 512 PTEs
+pub const PageTable = *[512]Pte; // 512 PTEs
 
 pub const pg_size = 4096; // bytes per page
 pub const pg_shift = 12; // bits of offset within a page
@@ -447,36 +448,41 @@ pub inline fn pgRoundDown(sz: usize) usize {
     return ((sz)) & ~@as(usize, pg_size - 1);
 }
 
-pub const PteFlag = enum(u32) {
-    v = @as(u32, 1) << 0, // valid
-    r = @as(u32, 1) << 1,
-    w = @as(u32, 1) << 2,
-    x = @as(u32, 1) << 3,
-    u = @as(u32, 1) << 4, // user can access
+///Page Table Entry flags
+pub const PteFlag = enum(usize) {
+    v = 1 << 0, // valid
+    r = 1 << 1,
+    w = 1 << 2,
+    x = 1 << 3,
+    u = 1 << 4, // user can access
 };
 
 // shift a physical address to the right place for a PTE.
-pub inline fn pa2Pte(pa: usize) usize {
+
+///Physical Address to Page Table Entry
+pub inline fn pa2Pte(pa: usize) Pte {
     return @as(usize, pa >> 12) << 10;
 }
-pub inline fn pte2Pa(pte: usize) usize {
+///Page Table Entry to Physical Address
+pub inline fn pte2Pa(pte: Pte) usize {
     return @as(usize, pte >> 10) << 12;
 }
-pub inline fn pteFlags(pte: usize) usize {
+///Read Page Table Entry flags
+pub inline fn rPteFlags(pte: usize) usize {
     return @as(usize, pte & 0x3FF);
 }
 
-// extract the three 9-bit page table indices from a virtual address.
-pub const px_mask = 0x1FF; // 9 bits
-pub inline fn pxShift(level: usize) usize {
-    return pg_shift + @as(usize, 9 * level);
+const px_mask = 0x1FF; // 9 bits
+inline fn pxShift(level: usize) u6 {
+    return @intCast(pg_shift + 9 * level);
 }
+///Extract the three 9-bit page table indices from a virtual address.
 pub inline fn px(level: usize, va: usize) usize {
-    return (va >> @as(u6, @intCast(pxShift(level)))) & px_mask;
+    return (va >> pxShift(level)) & px_mask;
 }
 
-// one beyond the highest possible virtual address.
-// MAXVA is actually one bit less than the max allowed by
-// Sv39, to avoid having to sign-extend virtual addresses
-// that have the high bit set.
+///one beyond the highest possible virtual address.
+///MAXVA is actually one bit less than the max allowed by
+///Sv39, to avoid having to sign-extend virtual addresses
+///that have the high bit set.
 pub const maxva: usize = @as(usize, 1) << (9 + 9 + 9 + 12 - 1);
