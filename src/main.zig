@@ -24,10 +24,14 @@ extern fn hang() void;
 
 pub fn main() void {
     if (Cpu.cpuId() == 0) {
+        uart.init();
         uart.dumbPrint("zv6 hello world");
         kalloc.init();
         vm.kvmInit();
+        vm.kvmInitHart();
         proc.init();
+
+        uart.dumbPrint("hart 0 init");
 
         @atomicStore(
             bool,
@@ -46,6 +50,8 @@ pub fn main() void {
             &started,
             builtin.AtomicOrder.acquire,
         ) == false) {}
+        uart.putCharSync('H');
+        vm.kvmInitHart();
         const cpuid: u8 = @intCast(Cpu.cpuId());
         uart.putCharSync('0' + cpuid);
         hang();

@@ -36,14 +36,14 @@ inline fn readReg(offset: u64) u8 {
 
 const uart_tx_buffer_size = 32;
 
-tx_lock: Spinlock,
-tx_buffer: [uart_tx_buffer_size]u8,
-tx_w: u64,
-tx_r: u64,
+var tx_lock: Spinlock = undefined;
+var tx_buffer: [uart_tx_buffer_size]u8 = undefined;
+var tx_w: u64 = 0;
+var tx_r: u64 = 0;
 
 const Self = @This();
 
-pub fn init(self: *Self) void {
+pub fn init() void {
     // disable interrupts.
     writeReg(
         @as(u64, ier),
@@ -63,16 +63,22 @@ pub fn init(self: *Self) void {
     writeReg(1, @as(u8, 0x00));
 
     // leave set-baud mode,
-    // and set word length to 8 bits, no parity
+    // and set word length to 8 bits, no parity.
+    writeReg(lcr, lcr_eight_bits);
+
+    // reset and enable fifo
     writeReg(
         @as(u64, fcr),
         fcr_fifo_enable | fcr_fifo_clear,
     );
 
-    Spinlock.init(&self.*.tx_lock, "uart");
-    self.*.tx_buffer = [_]u8{0} ** 32;
-    self.*.tx_w = 0;
-    self.*.tx_r = 0;
+    writeReg(
+        @as(u64, ier),
+        ier_tx_enable | ier_rx_enable,
+    );
+
+    Spinlock.init(&tx_lock, "uart");
+    tx_buffer = [_]u8{0} ** 32;
 }
 
 ///add a character to the output buffer and tell the
@@ -113,9 +119,9 @@ pub fn putCharSync(char: u8) void {
 ///in the transmit buffer, send it.
 ///caller must hold uart_tx_lock.
 ///called from both the top- and bottom-half.
-pub fn uartStart(self: *Self) void {
+pub fn start() void {
     while (true) {
-        if (self.tx_w == self.tx_r) {
+        if (tx_w == tx_r) {
             // transmit buffer is empty
             _ = readReg(isr);
             return;
@@ -128,8 +134,8 @@ pub fn uartStart(self: *Self) void {
             return;
         }
 
-        const char = self.tx_buffer[self.tx_r % uart_tx_buffer_size];
-        self.tx_r += 1;
+        const char = tx_buffer[tx_r % uart_tx_buffer_size];
+        tx_r += 1;
 
         // maybe putChar() is waiting for space in the buffer.
         // TODO: wakeup

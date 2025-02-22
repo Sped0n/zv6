@@ -4,11 +4,6 @@ const riscv = @import("riscv.zig");
 const memlayout = @import("memlayout.zig");
 
 comptime {
-    _ = @import("trap.zig");
-    _ = @import("main.zig");
-}
-
-comptime {
     asm (
         \\         # qemu -kernel loads the kernel at 0x80000000
         \\         # and causes each hart (i.e. CPU) to jump there.
