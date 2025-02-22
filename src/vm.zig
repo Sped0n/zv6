@@ -79,7 +79,7 @@ pub fn kvmMake() riscv.PageTable {
         kpgtbl,
         memlayout.plic,
         memlayout.plic,
-        0x400000,
+        0x4000000,
         rw_permission,
     );
 
@@ -157,7 +157,7 @@ pub fn walk(
 
     var level: u64 = 2;
     while (level > 0) : (level -= 1) {
-        const pte_ptr: *riscv.Pte = &page_table[
+        const pte_ptr: *riscv.Pte = &local_page_table[
             riscv.px(
                 level,
                 virt_addr,
@@ -254,7 +254,7 @@ pub fn mapPages(
     var local_phy_addr: u64 = phy_addr;
     const last: u64 = virt_addr + size - riscv.pg_size;
 
-    while (local_virt_addr < last) : ({
+    while (local_virt_addr <= last) : ({
         local_virt_addr += riscv.pg_size;
         local_phy_addr += riscv.pg_size;
     }) {
