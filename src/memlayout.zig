@@ -65,7 +65,7 @@ pub const phy_stop = kernel_base + 128 * 1024 * 1024;
 
 // map the trampoline page to the highest address,
 // in both user and kernel space.
-pub const trampoline: u64 = riscv.maxva - @as(u64, riscv.pg_size);
+pub const trampoline: u64 = riscv.max_va - @as(u64, riscv.pg_size);
 
 ///map kernel stacks beneath the trampoline,
 ///each surrounded by invalid guard pages.

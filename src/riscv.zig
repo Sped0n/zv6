@@ -468,7 +468,7 @@ pub inline fn pte2Pa(pte: Pte) u64 {
     return @as(u64, pte >> 10) << 12;
 }
 ///Read Page Table Entry flags
-pub inline fn rPteFlags(pte: u64) u64 {
+pub inline fn rPteFlags(pte: Pte) u64 {
     return @as(u64, pte & 0x3FF);
 }
 
@@ -485,4 +485,4 @@ pub inline fn px(level: u64, va: u64) u64 {
 ///MAXVA is actually one bit less than the max allowed by
 ///Sv39, to avoid having to sign-extend virtual addresses
 ///that have the high bit set.
-pub const maxva: u64 = @as(u64, 1) << (9 + 9 + 9 + 12 - 1);
+pub const max_va: u64 = @as(u64, 1) << (9 + 9 + 9 + 12 - 1);
