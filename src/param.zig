@@ -1,4 +1,4 @@
-pub const NPROC = 64; // maximum number of processes
+pub const n_proc = 64; // maximum number of processes
 pub const n_cpu = 8; // maximum number of CPUs
 pub const n_ofile = 16; // open files per process
 pub const n_file = 100; // open files per system
