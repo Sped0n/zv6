@@ -6,6 +6,8 @@ const memlayout = @import("memlayout.zig");
 const vm = @import("vm.zig");
 const panic = @import("uart.zig").dumbPanic;
 
+// Structs ---------------------------------------------------------------------
+
 // Saved registers for kernel context switches.
 pub const Context = extern struct {
     ra: u64,
@@ -45,10 +47,8 @@ pub const Cpu = struct {
     }
 };
 
-pub var cpus: [param.n_cpu]Cpu = undefined;
-
 // Trapframe structure for handling traps
-pub const Trapframe = packed struct {
+pub const Trapframe = extern struct {
     kernel_satp: u64, // kernel page table
     kernel_sp: u64, // top of process's kernel stack
     kernel_trap: u64, // usertrap()
@@ -121,30 +121,56 @@ pub const Proc = struct {
     name: [16]u8, // Process name (debugging)
 };
 
+// Codes -----------------------------------------------------------------------
+
+pub var cpus: [param.n_cpu]Cpu = undefined;
 pub var procs: [param.n_proc]Proc = undefined;
 
-pub fn mapStacks(kpgtbl: riscv.PageTable) void {
-    // TODO: init procs
+var pid_lock: Spinlock = undefined;
 
+///helps ensure that wakeups of wait()ing
+///parents are not lost. helps obey the
+///memory model when using p->parent.
+///must be acquired before any p->lock.
+var wait_lock: Spinlock = undefined;
+
+///Allocate a page for each process's kernel stack.
+///Map it high in memory, followed by an invalid
+///guard page.
+pub fn mapStacks(kpgtbl: riscv.PageTable) void {
     // NOTE: don't try to iterate on uninitialized procs
     // see https://github.com/ziglang/zig/issues/13934
     for (0..param.n_proc) |i| {
-        const phy_addr: u64 = @intFromPtr(kalloc.kalloc() orelse {
-            return panic("proc map stack kalloc err");
-        });
+        const phy_addr = kalloc.alloc();
+        if (phy_addr == null) panic("proc mapStacks kalloc");
         const virt_addr: u64 = memlayout.kStack(
             @intFromPtr(&procs[i]) - @intFromPtr(&procs[0]),
         );
         vm.kvmMap(
             kpgtbl,
             virt_addr,
-            phy_addr,
+            @intFromPtr(phy_addr.?),
             riscv.pg_size,
             @intFromEnum(
                 riscv.PteFlag.r,
             ) | @intFromEnum(
                 riscv.PteFlag.w,
             ),
+        );
+    }
+}
+
+pub fn init() void {
+    // NOTE: don't try to iterate on uninitialized procs
+    // see https://github.com/ziglang/zig/issues/13934
+    Spinlock.init(&pid_lock, "nextpid");
+    Spinlock.init(&wait_lock, "wait_lock");
+    for (0..param.n_proc) |i| {
+        const p = &(procs[i]);
+        Spinlock.init(&(p.lock), "proc");
+        p.state = .UNUSED;
+        p.kstack = memlayout.kStack(
+            @intFromPtr(p) - @intFromPtr(&procs[0]),
         );
     }
 }

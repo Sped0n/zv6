@@ -14,7 +14,7 @@ var freelist: ?*Block = null;
 
 const Self = @This();
 
-pub fn kinit() void {
+pub fn init() void {
     Spinlock.init(&lock, "kmem");
     freeRange(end, @ptrFromInt(memlayout.phy_stop));
 }
@@ -23,7 +23,7 @@ fn freeRange(pa_start: *anyopaque, pa_end: *anyopaque) void {
     var p: u64 = riscv.pgRoundUp(@intFromPtr(pa_start));
     const pa_end_in_u64: u64 = @intFromPtr(pa_end);
     while (p + riscv.pg_size <= pa_end_in_u64) : (p += riscv.pg_size) {
-        kfree(@ptrFromInt(p));
+        free(@ptrFromInt(p));
     }
 }
 
@@ -31,7 +31,7 @@ fn freeRange(pa_start: *anyopaque, pa_end: *anyopaque) void {
 ///which normally should have been returned by a
 ///call to kalloc().  (The exception is when
 ///initializing the allocator; see kinit above.)
-pub fn kfree(pa: *anyopaque) void {
+pub fn free(pa: *anyopaque) void {
     const pa_in_u64: u64 = @intFromPtr(pa);
 
     // not aligned.
@@ -66,7 +66,7 @@ pub fn kfree(pa: *anyopaque) void {
 ///Allocate one 4096-byte page of physical memory.
 ///Returns a pointer that the kernel can use.
 ///Returns null if the memory cannot be allocated.
-pub fn kalloc() ?*anyopaque {
+pub fn alloc() ?*anyopaque {
     var r: ?*Block = null;
 
     {

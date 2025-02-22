@@ -40,7 +40,7 @@ fn memMove(dest: ?[*]u8, src: ?[*]const u8, n: usize) ?[*]u8 {
 }
 
 pub fn kvmMake() riscv.PageTable {
-    const kpgtbl: riscv.PageTable = @alignCast(@ptrCast(kalloc.kalloc()));
+    const kpgtbl: riscv.PageTable = @alignCast(@ptrCast(kalloc.alloc()));
 
     const mem = @as([*]u8, @ptrCast(kpgtbl))[0..riscv.pg_size];
     @memset(mem, 0);
@@ -169,7 +169,7 @@ pub fn walk(
         } else {
             if (!alloc) return null;
 
-            const mem_ptr = kalloc.kalloc();
+            const mem_ptr = kalloc.alloc();
             if (mem_ptr == null) {
                 panic("walk kalloc failed");
                 return null;
@@ -306,7 +306,7 @@ pub fn uvmUnmap(
 
             if (free) {
                 const phy_addr = riscv.pte2Pa(pte);
-                kalloc.kfree(@ptrFromInt(phy_addr));
+                kalloc.free(@ptrFromInt(phy_addr));
             }
             pte_ptr.* = 0;
         } else {
@@ -319,7 +319,7 @@ pub fn uvmUnmap(
 ///returns 0 if out of memory.
 pub fn uvmCreate() ?riscv.PageTable {
     const page_table: riscv.PageTable = @alignCast(@ptrCast(
-        kalloc.kalloc() orelse return null,
+        kalloc.alloc() orelse return null,
     ));
 
     const mem = @as([*]u8, @ptrCast(page_table))[0..riscv.pg_size];
@@ -334,7 +334,7 @@ pub fn uvmCreate() ?riscv.PageTable {
 pub fn uvmFirst(page_table: riscv.PageTable, src: []const u8) void {
     if (src.len > riscv.pg_size) panic("uvmFirst: more than one page");
 
-    const mem_ptr = kalloc.kalloc() orelse {
+    const mem_ptr = kalloc.alloc() orelse {
         panic("uvmfirst: kalloc failed");
         return;
     };
@@ -354,7 +354,7 @@ pub fn uvmFirst(page_table: riscv.PageTable, src: []const u8) void {
         @intFromPtr(mem_ptr),
         permission,
     )) {
-        kalloc.kfree(mem_ptr);
+        kalloc.free(mem_ptr);
         panic("uvmfirst: mapPages failed");
     } else {
         _ = memMove(mem, src, src.len);
@@ -374,7 +374,7 @@ pub fn uvmMalloc(
     const local_old_size = riscv.pgRoundUp(old_size);
     var size = local_old_size;
     while (size < new_size) : (size += riscv.pg_size) {
-        const mem_ptr = kalloc.kalloc();
+        const mem_ptr = kalloc.alloc();
         if (mem_ptr == null) {
             uvmDealloc(page_table, size, local_old_size);
             return null;
@@ -392,7 +392,7 @@ pub fn uvmMalloc(
             @intFromPtr(mem_ptr.?),
             ru_permission | permission,
         )) {
-            kalloc.kfree(mem_ptr.?);
+            kalloc.free(mem_ptr.?);
             uvmDealloc(page_table, size, old_size);
             return null;
         }
@@ -446,7 +446,7 @@ pub fn freeWalk(page_table: riscv.PageTable) void {
             panic("freewalk: leaf");
         }
     }
-    kalloc.kfree(@ptrCast(page_table));
+    kalloc.free(@ptrCast(page_table));
 }
 
 ///Free user memory pages,
@@ -484,7 +484,7 @@ pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) bool {
         const phy_addr = riscv.pte2Pa(pte);
         const flags = riscv.rPteFlags(pte);
 
-        const mem_ptr = kalloc.kalloc();
+        const mem_ptr = kalloc.alloc();
         if (mem_ptr == null) {
             uvmUnmap(
                 new,
@@ -508,7 +508,7 @@ pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) bool {
             @intFromPtr(mem_ptr.*),
             flags,
         )) {
-            kalloc.kfree(mem_ptr);
+            kalloc.free(mem_ptr);
             uvmUnmap(
                 new,
                 0,

@@ -25,17 +25,9 @@ extern fn hang() void;
 pub fn main() void {
     if (Cpu.cpuId() == 0) {
         uart.dumbPrint("zv6 hello world");
-        kalloc.kinit();
-
-        // Test 5: Try to free invalid address
-        //kalloc.kfree(@ptrFromInt(0x1000)); // Should not crash, just return
-
-        // Test 6: Try to free unaligned address
-        //kalloc.kfree(@ptrFromInt(0x1001)); // Should not crash, just return
-
-        // uart.dumbPrint("All kalloc tests passed!");
-
+        kalloc.init();
         vm.kvmInit();
+        proc.init();
 
         @atomicStore(
             bool,
