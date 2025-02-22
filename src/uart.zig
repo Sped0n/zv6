@@ -24,12 +24,12 @@ const lsr: u8 = 5; // Line Status Register
 const lsr_rx_ready: u8 = 1 << 0;
 const lsr_tx_idle: u8 = 1 << 5;
 
-inline fn writeReg(offset: usize, value: u8) void {
+inline fn writeReg(offset: u64, value: u8) void {
     const ptr: *volatile u8 = @ptrFromInt(memlayout.uart0 + offset);
     ptr.* = value;
 }
 
-inline fn readReg(offset: usize) u8 {
+inline fn readReg(offset: u64) u8 {
     const ptr: *volatile u8 = @ptrFromInt(memlayout.uart0 + offset);
     return ptr.*;
 }
@@ -46,13 +46,13 @@ const Self = @This();
 pub fn init(self: *Self) void {
     // disable interrupts.
     writeReg(
-        @as(usize, ier),
+        @as(u64, ier),
         @as(u8, 0x00),
     );
 
     // special mode to set baud rate.
     writeReg(
-        @as(usize, lcr),
+        @as(u64, lcr),
         lcr_baud_latch,
     );
 
@@ -65,7 +65,7 @@ pub fn init(self: *Self) void {
     // leave set-baud mode,
     // and set word length to 8 bits, no parity
     writeReg(
-        @as(usize, fcr),
+        @as(u64, fcr),
         fcr_fifo_enable | fcr_fifo_clear,
     );
 
@@ -105,8 +105,8 @@ pub fn putCharSync(char: u8) void {
     // TODO: panicked detection
 
     // wait for Transmit Holding Empty to be set in LSR.
-    while ((readReg(@as(usize, lsr)) & lsr_tx_idle) == 0) {}
-    writeReg(@as(usize, thr), char);
+    while ((readReg(@as(u64, lsr)) & lsr_tx_idle) == 0) {}
+    writeReg(@as(u64, thr), char);
 }
 
 ///if the UART is idle, and a character is waiting
@@ -121,7 +121,7 @@ pub fn uartStart(self: *Self) void {
             return;
         }
 
-        if ((readReg(@as(usize, lsr)) & lsr_tx_idle) == 0) {
+        if ((readReg(@as(u64, lsr)) & lsr_tx_idle) == 0) {
             // the UART transmit holding register is full,
             // so we cannot give it another byte.
             // it will interrupt when it's ready for a new byte.
@@ -134,7 +134,7 @@ pub fn uartStart(self: *Self) void {
         // maybe putChar() is waiting for space in the buffer.
         // TODO: wakeup
 
-        writeReg(@as(usize, thr), char);
+        writeReg(@as(u64, thr), char);
     }
 }
 

@@ -50,8 +50,8 @@ export fn start() callconv(.C) noreturn {
     riscv.wSatp(0);
 
     // delegate all interrupts and exceptions to supervisor mode.
-    riscv.wMedeleg(@as(usize, 0xffff));
-    riscv.wMideleg(@as(usize, 0xffff));
+    riscv.wMedeleg(@as(u64, 0xffff));
+    riscv.wMideleg(@as(u64, 0xffff));
     riscv.wSie(
         riscv.rSie() | @intFromEnum(
             riscv.Sie.seie,
@@ -64,8 +64,8 @@ export fn start() callconv(.C) noreturn {
 
     // configure Physical Memory Protection to give supervisor mode
     // access to all of physical memory.
-    riscv.wPmpaddr0(@as(usize, 0x3fffffffffffff));
-    riscv.wPmpcfg0(@as(usize, 0xf));
+    riscv.wPmpaddr0(@as(u64, 0x3fffffffffffff));
+    riscv.wPmpcfg0(@as(u64, 0xf));
 
     // ask for clock interrupts.
     // timerInit();
@@ -88,11 +88,11 @@ fn timerInit() void {
     riscv.wMie(riscv.rMie() | @intFromEnum(riscv.Sie.stie));
 
     // enable the sstc extension (i.e. simecmp).
-    riscv.wMenvcfg(riscv.rMenvcfg() | @as(usize, 1 << 63));
+    riscv.wMenvcfg(riscv.rMenvcfg() | @as(u64, 1 << 63));
 
     // allow supervisor to use stimecmp and time.
-    riscv.wMcounteren(riscv.rMcounteren() | @as(usize, 2));
+    riscv.wMcounteren(riscv.rMcounteren() | @as(u64, 2));
 
     // ask for the very first timer interrupt.
-    riscv.wStimecmp(riscv.rTime() + @as(usize, 1000000));
+    riscv.wStimecmp(riscv.rTime() + @as(u64, 1000000));
 }

@@ -23,12 +23,12 @@ pub fn kvmMake() riscv.PageTable {
     const kpgtbl: riscv.PageTable = @alignCast(@ptrCast(kalloc.kalloc()));
 
     @memset(kpgtbl, 0);
-    const rw_permission: usize = @intFromEnum(
+    const rw_permission: u64 = @intFromEnum(
         riscv.PteFlag.r,
     ) | @intFromEnum(
         riscv.PteFlag.w,
     );
-    const rx_permission: usize = @intFromEnum(
+    const rx_permission: u64 = @intFromEnum(
         riscv.PteFlag.r,
     ) | @intFromEnum(
         riscv.PteFlag.x,
@@ -95,32 +95,45 @@ pub fn kvmMake() riscv.PageTable {
     return kpgtbl;
 }
 
+///Initialize the one kernel_page_table
 pub fn kvmInit() void {
     kernel_page_table = kvmMake();
 }
 
-// Return the address of the PTE in page table pagetable
-// that corresponds to virtual address va.  If alloc!=0,
-// create any required page-table pages.
+///Switch h/w page table register to the kernel's page table,
+///and enable paging.
+pub fn kvmInitHart() void {
+    // wait for any previous writes to the page table memory to finish.
+    riscv.sfenceVma();
+
+    riscv.wSatp(riscv.makeSatp(kernel_page_table));
+
+    // flush stale entries from the TLB.
+    riscv.sfenceVma();
+}
+
+///Return the address of the PTE in page table pagetable
+///that corresponds to virtual address va.  If alloc is
+///true, create any required page-table pages.
 //
-// The risc-v Sv39 scheme has three levels of page-table
-// pages. A page-table page contains 512 64-bit PTEs.
-// A 64-bit virtual address is split into five fields:
-//   39..63 -- must be zero.
-//   30..38 -- 9 bits of level-2 index.
-//   21..29 -- 9 bits of level-1 index.
-//   12..20 -- 9 bits of level-0 index.
-//    0..11 -- 12 bits of byte offset within the page.
+///The risc-v Sv39 scheme has three levels of page-table
+///pages. A page-table page contains 512 64-bit PTEs.
+///A 64-bit virtual address is split into five fields:
+///  39..63 -- must be zero.
+///  30..38 -- 9 bits of level-2 index.
+///  21..29 -- 9 bits of level-1 index.
+///  12..20 -- 9 bits of level-0 index.
+///   0..11 -- 12 bits of byte offset within the page.
 pub fn walk(
     page_table: riscv.PageTable,
-    virt_addr: usize,
+    virt_addr: u64,
     alloc: bool,
 ) ?*riscv.Pte {
     if (virt_addr > riscv.maxva) panic("walk va greater than maxva");
 
     var curr_page_table = page_table;
 
-    var level: usize = 2;
+    var level: u64 = 2;
     while (level > 0) : (level -= 1) {
         const pte_p: *riscv.Pte = &page_table[
             riscv.px(
@@ -154,10 +167,10 @@ pub fn walk(
 ///does not flush TLB or enable paging.
 pub fn kvmMap(
     kpgtbl: riscv.PageTable,
-    virt_addr: usize,
-    phy_addr: usize,
-    size: usize,
-    permission: usize,
+    virt_addr: u64,
+    phy_addr: u64,
+    size: u64,
+    permission: u64,
 ) void {
     if (!mapPages(
         kpgtbl,
@@ -175,10 +188,10 @@ pub fn kvmMap(
 ///allocate a needed page-table page.
 pub fn mapPages(
     page_table: riscv.PageTable,
-    virt_addr: usize,
-    size: usize,
-    phy_addr: usize,
-    permission: usize,
+    virt_addr: u64,
+    size: u64,
+    phy_addr: u64,
+    permission: u64,
 ) bool {
     if ((virt_addr % riscv.pg_size) != 0) panic("mappages: va not aligned");
 
@@ -186,9 +199,9 @@ pub fn mapPages(
 
     if (size == 0) panic("mappages: size is 0");
 
-    var curr_virt_addr: usize = virt_addr;
-    var curr_phy_addr: usize = phy_addr;
-    const last: usize = virt_addr + size - riscv.pg_size;
+    var curr_virt_addr: u64 = virt_addr;
+    var curr_phy_addr: u64 = phy_addr;
+    const last: u64 = virt_addr + size - riscv.pg_size;
 
     while (curr_virt_addr < last) : ({
         curr_virt_addr += riscv.pg_size;

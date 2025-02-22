@@ -35,7 +35,7 @@ pub const Cpu = struct {
 
     const Self = @This();
 
-    pub fn cpuId() usize {
+    pub fn cpuId() u64 {
         return riscv.rTp();
     }
 
@@ -129,10 +129,10 @@ pub fn mapStacks(kpgtbl: riscv.PageTable) void {
     // NOTE: don't try to iterate on uninitialized procs
     // see https://github.com/ziglang/zig/issues/13934
     for (0..param.n_proc) |i| {
-        const phy_addr: usize = @intFromPtr(kalloc.kalloc() orelse {
+        const phy_addr: u64 = @intFromPtr(kalloc.kalloc() orelse {
             return panic("proc map stack kalloc err");
         });
-        const virt_addr: usize = memlayout.kStack(
+        const virt_addr: u64 = memlayout.kStack(
             @intFromPtr(&procs[i]) - @intFromPtr(&procs[0]),
         );
         vm.kvmMap(
