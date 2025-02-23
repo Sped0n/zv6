@@ -19,11 +19,13 @@ pub fn init() void {
     freeRange(end, @ptrFromInt(memlayout.phy_stop));
 }
 
-fn freeRange(pa_start: *anyopaque, pa_end: *anyopaque) void {
-    var p: u64 = riscv.pgRoundUp(@intFromPtr(pa_start));
-    const pa_end_in_u64: u64 = @intFromPtr(pa_end);
-    while (p + riscv.pg_size <= pa_end_in_u64) : (p += riscv.pg_size) {
-        free(@ptrFromInt(p));
+fn freeRange(start_ptr: *anyopaque, end_ptr: *anyopaque) void {
+    var start_addr: u64 = riscv.pgRoundUp(@intFromPtr(start_ptr));
+    const end_addr: u64 = @intFromPtr(end_ptr);
+    while (start_addr + riscv.pg_size <= end_addr) : ({
+        start_addr += riscv.pg_size;
+    }) {
+        free(@ptrFromInt(start_addr));
     }
 }
 
@@ -31,30 +33,30 @@ fn freeRange(pa_start: *anyopaque, pa_end: *anyopaque) void {
 ///which normally should have been returned by a
 ///call to kalloc().  (The exception is when
 ///initializing the allocator; see kinit above.)
-pub fn free(pa: *anyopaque) void {
-    const pa_in_u64: u64 = @intFromPtr(pa);
+pub fn free(page_ptr: *anyopaque) void {
+    const page_addr: u64 = @intFromPtr(page_ptr);
 
     // not aligned.
-    if (pa_in_u64 % riscv.pg_size != 0) {
+    if (page_addr % riscv.pg_size != 0) {
         // TODO: panic
         panic("kfree not aligned");
         return;
     }
 
-    if (pa_in_u64 < @as(
+    if (page_addr < @as(
         u64,
         @intFromPtr(end),
-    ) or pa_in_u64 >= memlayout.phy_stop) {
+    ) or page_addr >= memlayout.phy_stop) {
         // TODO: panic
         panic("kfree out of range");
         return;
     }
 
     // fill with junk to catch dangling refs.
-    const mem = @as([*]u8, @ptrCast(pa))[0..riscv.pg_size];
+    const mem = @as([*]u8, @ptrCast(page_ptr))[0..riscv.pg_size];
     @memset(mem, 1);
 
-    var r: *Block = @alignCast(@ptrCast(pa));
+    var r: *Block = @alignCast(@ptrCast(page_ptr));
 
     lock.acquire();
     defer lock.release();
