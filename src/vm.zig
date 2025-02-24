@@ -2,7 +2,7 @@ const riscv = @import("riscv.zig");
 const kalloc = @import("kalloc.zig");
 const memlayout = @import("memlayout.zig");
 const proc = @import("proc.zig");
-const panic = @import("uart.zig").dumbPanic;
+const panic = @import("printf.zig").panic;
 
 ///kernel page table
 var kernel_page_table: riscv.PageTable = undefined;
@@ -151,7 +151,7 @@ pub fn walk(
     virt_addr: u64,
     alloc: bool,
 ) ?*riscv.Pte {
-    if (virt_addr > riscv.max_va) panic("walk va greater than maxva");
+    if (virt_addr > riscv.max_va) panic(&@src(), "va greater than maxva");
 
     var local_page_table = page_table;
 
@@ -171,7 +171,7 @@ pub fn walk(
 
             const mem_ptr = kalloc.alloc();
             if (mem_ptr == null) {
-                panic("walk kalloc failed");
+                panic(&@src(), "kalloc failed");
                 return null;
             }
 
@@ -229,7 +229,7 @@ pub fn kvmMap(
         size,
         phy_addr,
         permission,
-    )) panic("kvmmap failed");
+    )) panic(&@src(), "mapPages failed");
 }
 
 ///Create PTEs for virtual addresses starting at va that refer to
@@ -244,11 +244,11 @@ pub fn mapPages(
     phy_addr: u64,
     permission: u64,
 ) bool {
-    if ((virt_addr % riscv.pg_size) != 0) panic("mappages: va not aligned");
+    if ((virt_addr % riscv.pg_size) != 0) panic(&@src(), "va not aligned");
 
-    if ((size % riscv.pg_size) != 0) panic("mappages: size not aligned");
+    if ((size % riscv.pg_size) != 0) panic(&@src(), "size not aligned");
 
-    if (size == 0) panic("mappages: size is 0");
+    if (size == 0) panic(&@src(), "size is 0");
 
     var local_virt_addr: u64 = virt_addr;
     var local_phy_addr: u64 = phy_addr;
@@ -264,7 +264,7 @@ pub fn mapPages(
             true,
         ) orelse return false;
         if (pte_ptr.* & @intFromEnum(riscv.PteFlag.v) != 0) {
-            panic("mappages: remap");
+            panic(&@src(), "remap");
         }
         pte_ptr.* = riscv.pa2Pte(
             local_phy_addr,
@@ -285,7 +285,7 @@ pub fn uvmUnmap(
     npages: u64,
     free: bool,
 ) void {
-    if (virt_addr % riscv.pg_size != 0) panic("uvmUnmap: not aligned");
+    if (virt_addr % riscv.pg_size != 0) panic(&@src(), "not aligned");
 
     var local_virt_addr = virt_addr;
     const last = virt_addr + npages * riscv.pg_size;
@@ -299,10 +299,10 @@ pub fn uvmUnmap(
 
             if ((pte & @intFromEnum(
                 riscv.PteFlag.v,
-            )) == 0) panic("uvmUnmap: not mapped");
+            )) == 0) panic(&@src(), "not mapped");
             if (riscv.rPteFlags(pte) == @intFromEnum(
                 riscv.PteFlag.v,
-            )) panic("uvmUnmap: not a leaf");
+            )) panic(&@src(), "not a leaf");
 
             if (free) {
                 const phy_addr = riscv.pte2Pa(pte);
@@ -310,7 +310,7 @@ pub fn uvmUnmap(
             }
             pte_ptr.* = 0;
         } else {
-            panic("uvmUnmap: walk");
+            panic(&@src(), "uvmUnmap: walk");
         }
     }
 }
@@ -332,7 +332,7 @@ pub fn uvmCreate() ?riscv.PageTable {
 ///for the very first process.
 ///sz must be less than a page.
 pub fn uvmFirst(page_table: riscv.PageTable, src: []const u8) void {
-    if (src.len > riscv.pg_size) panic("uvmFirst: more than one page");
+    if (src.len > riscv.pg_size) panic(&@src(), "more than one page");
 
     const mem_ptr = kalloc.alloc() orelse {
         panic("uvmfirst: kalloc failed");
@@ -355,7 +355,7 @@ pub fn uvmFirst(page_table: riscv.PageTable, src: []const u8) void {
         permission,
     )) {
         kalloc.free(mem_ptr);
-        panic("uvmfirst: mapPages failed");
+        panic(&@src(), "mapPages failed");
     } else {
         _ = memMove(mem, src, src.len);
     }
@@ -415,7 +415,10 @@ pub fn uvmDealloc(
     const rounded_new_size = riscv.pgRoundUp(new_size);
 
     if (rounded_new_size < rounded_old_size) {
-        const npages: u64 = (rounded_old_size - rounded_new_size) / riscv.pg_size;
+        const npages = @as(
+            u64,
+            (rounded_old_size - rounded_new_size) / riscv.pg_size,
+        );
         uvmUnmap(
             page_table,
             rounded_new_size,

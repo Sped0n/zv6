@@ -4,7 +4,7 @@ const riscv = @import("riscv.zig");
 const kalloc = @import("kalloc.zig");
 const memlayout = @import("memlayout.zig");
 const vm = @import("vm.zig");
-const panic = @import("uart.zig").dumbPanic;
+const panic = @import("printf.zig").panic;
 
 // Structs ---------------------------------------------------------------------
 
@@ -34,6 +34,8 @@ pub const Cpu = struct {
     context: Context, // swtch() here to enter scheduler().
     noff: u32, // Depth of push_off() nesting.
     intena: bool, // Were interrupts enabled before push_off()?
+
+    var cpus: [param.n_cpu]Cpu = undefined; // container level interrupts
 
     const Self = @This();
 
@@ -119,12 +121,11 @@ pub const Proc = struct {
     //ofile: [param.NOFILE]?*File, // Open files
     //cwd: ?*Inode, // Current directory
     name: [16]u8, // Process name (debugging)
+
+    var procs: [param.n_proc]Proc = undefined; // container level variables
 };
 
 // Codes -----------------------------------------------------------------------
-
-pub var cpus: [param.n_cpu]Cpu = undefined;
-pub var procs: [param.n_proc]Proc = undefined;
 
 var pid_lock: Spinlock = undefined;
 
@@ -142,9 +143,9 @@ pub fn mapStacks(kpgtbl: riscv.PageTable) void {
     // see https://github.com/ziglang/zig/issues/13934
     for (0..param.n_proc) |i| {
         const phy_addr = kalloc.alloc();
-        if (phy_addr == null) panic("proc mapStacks kalloc");
+        if (phy_addr == null) panic(&@src(), "kalloc failed");
         const virt_addr: u64 = memlayout.kStack(
-            @intFromPtr(&procs[i]) - @intFromPtr(&procs[0]),
+            @intFromPtr(&Proc.procs[i]) - @intFromPtr(&Proc.procs[0]),
         );
         vm.kvmMap(
             kpgtbl,
@@ -166,11 +167,11 @@ pub fn init() void {
     Spinlock.init(&pid_lock, "nextpid");
     Spinlock.init(&wait_lock, "wait_lock");
     for (0..param.n_proc) |i| {
-        const p = &(procs[i]);
+        const p = &(Proc.procs[i]);
         Spinlock.init(&(p.lock), "proc");
         p.state = .UNUSED;
         p.kstack = memlayout.kStack(
-            @intFromPtr(p) - @intFromPtr(&procs[0]),
+            @intFromPtr(p) - @intFromPtr(&Proc.procs[0]),
         );
     }
 }

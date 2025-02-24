@@ -2,7 +2,7 @@ const std = @import("std");
 
 const memlayout = @import("memlayout.zig");
 const Spinlock = @import("spinlock.zig");
-const misc = @import("misc.zig");
+const printf = @import("printf.zig");
 
 // the UART control registers.
 // some have different meanings for
@@ -34,10 +34,10 @@ inline fn readReg(offset: u64) u8 {
     return ptr.*;
 }
 
-const uart_tx_buffer_size = 32;
+const tx_buffer_size = 32;
 
 var tx_lock: Spinlock = undefined;
-var tx_buffer: [uart_tx_buffer_size]u8 = undefined;
+var tx_buffer: [tx_buffer_size]u8 = undefined;
 var tx_w: u64 = 0;
 var tx_r: u64 = 0;
 
@@ -87,17 +87,18 @@ pub fn init() void {
 ///because it may block, it can't be called
 ///from interrupts; it's only suitable for use
 ///by write().
-pub fn putChar(self: *Self, char: u8) void {
-    self.tx_lock.acquire();
-    defer self.tx_lock.acquire();
+pub fn putChar(char: u8) void {
+    tx_lock.acquire();
+    defer tx_lock.release();
 
-    // TODO: panicked detection
-    while (self.uart_tx_w == self.uart_tx_r + uart_tx_buffer_size) {
+    printf.checkPanicked();
+
+    while (tx_w == tx_r + tx_buffer_size) {
         // TODO: sleep
     }
-    self.tx_buffer[self.uart_tx_w % uart_tx_buffer_size] = char;
-    self.tx_w += 1;
-    self.uartStart();
+    tx_buffer[tx_w % tx_buffer_size] = char;
+    tx_w += 1;
+    start();
 }
 
 ///alternate version of uartputc() that doesn't
@@ -105,10 +106,10 @@ pub fn putChar(self: *Self, char: u8) void {
 ///to echo characters. it spins waiting for the uart's
 ///output register to be empty.
 pub fn putCharSync(char: u8) void {
-    misc.pushOff();
-    defer misc.popOff();
+    Spinlock.pushOff();
+    defer Spinlock.popOff();
 
-    // TODO: panicked detection
+    printf.checkPanicked();
 
     // wait for Transmit Holding Empty to be set in LSR.
     while ((readReg(@as(u64, lsr)) & lsr_tx_idle) == 0) {}
@@ -134,7 +135,7 @@ pub fn start() void {
             return;
         }
 
-        const char = tx_buffer[tx_r % uart_tx_buffer_size];
+        const char = tx_buffer[tx_r % tx_buffer_size];
         tx_r += 1;
 
         // maybe putChar() is waiting for space in the buffer.
@@ -152,25 +153,4 @@ pub fn getChar() ?u8 {
     } else {
         return null;
     }
-}
-
-pub fn dumbPrint(str: []const u8) void {
-    for (str) |c| {
-        putCharSync(c);
-    }
-    putCharSync('\n');
-}
-
-pub fn dumbPanic(str: []const u8) void {
-    dumbPrint(str);
-    while (true) {}
-}
-
-pub fn dumbAssert(cond: bool, info: []const u8) void {
-    if (cond) return;
-    const assert_str: []const u8 = "assert failed: ";
-    for (assert_str) |c| {
-        putCharSync(c);
-    }
-    dumbPanic(info);
 }

@@ -1,7 +1,7 @@
 const Spinlock = @import("spinlock.zig");
 const memlayout = @import("memlayout.zig");
 const riscv = @import("riscv.zig");
-const panic = @import("uart.zig").dumbPanic;
+const panic = @import("printf.zig").panic;
 
 const end: *anyopaque = @ptrCast(@extern([*c]c_char, .{ .name = "end" }));
 
@@ -31,15 +31,14 @@ fn freeRange(start_ptr: *anyopaque, end_ptr: *anyopaque) void {
 
 ///Free the page of physical memory pointed at by pa,
 ///which normally should have been returned by a
-///call to kalloc().  (The exception is when
-///initializing the allocator; see kinit above.)
+///call to alloc().  (The exception is when
+///initializing the allocator; see init above.)
 pub fn free(page_ptr: *anyopaque) void {
     const page_addr: u64 = @intFromPtr(page_ptr);
 
     // not aligned.
     if (page_addr % riscv.pg_size != 0) {
-        // TODO: panic
-        panic("kfree not aligned");
+        panic(&@src(), "not aligned");
         return;
     }
 
@@ -47,8 +46,7 @@ pub fn free(page_ptr: *anyopaque) void {
         u64,
         @intFromPtr(end),
     ) or page_addr >= memlayout.phy_stop) {
-        // TODO: panic
-        panic("kfree out of range");
+        panic(&@src(), "out of range");
         return;
     }
 

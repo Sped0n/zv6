@@ -1,10 +1,10 @@
 const builtin = @import("std").builtin;
-const fmt = @import("std").fmt;
 
 const riscv = @import("riscv.zig");
 const proc = @import("proc.zig");
 const Cpu = proc.Cpu;
-const uart = @import("uart.zig");
+const console = @import("console.zig");
+const printf = @import("printf.zig");
 const kalloc = @import("kalloc.zig");
 const vm = @import("vm.zig");
 
@@ -24,14 +24,14 @@ extern fn hang() void;
 
 pub fn main() void {
     if (Cpu.cpuId() == 0) {
-        uart.init();
-        uart.dumbPrint("zv6 hello world");
+        console.init();
+        printf.printf("zv6 hello world\n", .{});
         kalloc.init();
         vm.kvmInit();
         vm.kvmInitHart();
         proc.init();
 
-        uart.dumbPrint("hart 0 init");
+        printf.printf("hart 0 init\n", .{});
 
         @atomicStore(
             bool,
@@ -39,21 +39,16 @@ pub fn main() void {
             true,
             builtin.AtomicOrder.release,
         );
-        while (true) {
-            if (uart.getChar()) |_| {
-                uart.dumbPrint("not impl");
-            }
-        }
+        while (true) {}
     } else {
         while (@atomicLoad(
             bool,
             &started,
             builtin.AtomicOrder.acquire,
         ) == false) {}
-        uart.putCharSync('H');
         vm.kvmInitHart();
         const cpuid: u8 = @intCast(Cpu.cpuId());
-        uart.putCharSync('0' + cpuid);
+        printf.printf("hart {d} init\n", .{cpuid});
         hang();
     }
 }

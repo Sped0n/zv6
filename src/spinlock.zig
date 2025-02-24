@@ -1,7 +1,8 @@
 const builtin = @import("std").builtin;
 
 const Cpu = @import("proc.zig").Cpu;
-const misc = @import("misc.zig");
+const riscv = @import("riscv.zig");
+const panic = @import("printf.zig").panic;
 
 locked: u32,
 name: []const u8,
@@ -20,8 +21,8 @@ pub fn init(self: *Self, name: []const u8) void {
 ///Check whether this cpu is holding the lock.
 ///Interrupts must be off.
 pub fn acquire(self: *Self) void {
-    misc.pushOff();
-    if (self.holding()) {} // TODO: panic
+    pushOff();
+    if (self.holding()) panic(&@src(), "acquire while holding");
 
     while (@atomicRmw(
         u32,
@@ -30,13 +31,16 @@ pub fn acquire(self: *Self) void {
         1,
         builtin.AtomicOrder.acquire,
     ) != 0) {}
+
+    // Record info about lock acquisition for holding() and debugging.
+    self.cpu = Cpu.myCpu();
 }
 
 ///Release the lock.
 pub fn release(self: *Self) void {
-    if (!self.holding()) {} // TODO: panic
+    if (!self.holding()) panic(&@src(), "not holding");
 
-    self.cpu = undefined;
+    self.cpu = null;
 
     @atomicStore(
         u32,
@@ -45,9 +49,35 @@ pub fn release(self: *Self) void {
         builtin.AtomicOrder.release,
     );
 
-    misc.popOff();
+    popOff();
 }
 
 pub fn holding(self: *Self) bool {
     return (self.locked > 0) and (self.cpu == Cpu.myCpu());
+}
+
+///push_off/pop_off are like intr_off()/intr_on() except that they are matched:
+///it takes two pop_off()s to undo two push_off()s.  Also, if interrupts
+///are initially off, then push_off, pop_off leaves them off.
+pub fn pushOff() void {
+    const old = riscv.intrGet();
+
+    riscv.intrOff();
+    if (Cpu.myCpu().noff == 0) Cpu.myCpu().intena = old;
+    Cpu.myCpu().noff += 1;
+}
+
+///push_off/pop_off are like intr_off()/intr_on() except that they are matched:
+///it takes two pop_off()s to undo two push_off()s.  Also, if interrupts
+///are initially off, then push_off, pop_off leaves them off.
+pub fn popOff() void {
+    var c = Cpu.myCpu();
+    if (riscv.intrGet()) {
+        panic(&@src(), "interruptible");
+    }
+    if (c.noff < 1) {
+        panic(&@src(), "noff not matched");
+    }
+    c.noff -= 1;
+    if (c.noff == 0 and c.intena) riscv.intrOn();
 }
