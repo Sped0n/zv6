@@ -4,6 +4,7 @@ const riscv = @import("riscv.zig");
 const kalloc = @import("kalloc.zig");
 const memlayout = @import("memlayout.zig");
 const vm = @import("vm.zig");
+const File = @import("file.zig");
 const panic = @import("printf.zig").panic;
 
 // Structs ---------------------------------------------------------------------
@@ -117,8 +118,8 @@ pub const Proc = struct {
     pagetable: riscv.PageTable, // User page table
     trapframe: ?*Trapframe, // data page for trampoline.S
     context: Context, // swtch() here to run process
-    //ofile: [param.NOFILE]?*File, // Open files
-    //cwd: ?*Inode, // Current directory
+    ofile: [param.n_ofile]?*File, // Open files
+    cwd: ?*File.Inode, // Current directory
     name: [16]u8, // Process name (debugging)
 
     var procs: [param.n_proc]Proc = undefined; // container level variables
