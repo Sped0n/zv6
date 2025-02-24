@@ -23,7 +23,7 @@ comptime {
 extern fn hang() void;
 
 pub fn main() void {
-    if (Cpu.cpuId() == 0) {
+    if (Cpu.id() == 0) {
         console.init();
         printf.printf("zv6 hello world\n", .{});
         kalloc.init();
@@ -47,7 +47,7 @@ pub fn main() void {
             builtin.AtomicOrder.acquire,
         ) == false) {}
         vm.kvmInitHart();
-        const cpuid: u8 = @intCast(Cpu.cpuId());
+        const cpuid: u8 = @intCast(Cpu.id());
         printf.printf("hart {d} init\n", .{cpuid});
         hang();
     }

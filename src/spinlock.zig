@@ -33,7 +33,7 @@ pub fn acquire(self: *Self) void {
     ) != 0) {}
 
     // Record info about lock acquisition for holding() and debugging.
-    self.cpu = Cpu.myCpu();
+    self.cpu = Cpu.current();
 }
 
 ///Release the lock.
@@ -53,7 +53,7 @@ pub fn release(self: *Self) void {
 }
 
 pub fn holding(self: *Self) bool {
-    return (self.locked > 0) and (self.cpu == Cpu.myCpu());
+    return (self.locked > 0) and (self.cpu == Cpu.current());
 }
 
 ///push_off/pop_off are like intr_off()/intr_on() except that they are matched:
@@ -63,15 +63,16 @@ pub fn pushOff() void {
     const old = riscv.intrGet();
 
     riscv.intrOff();
-    if (Cpu.myCpu().noff == 0) Cpu.myCpu().intena = old;
-    Cpu.myCpu().noff += 1;
+    const c = Cpu.current();
+    if (c.noff == 0) c.intena = old;
+    c.noff += 1;
 }
 
 ///push_off/pop_off are like intr_off()/intr_on() except that they are matched:
 ///it takes two pop_off()s to undo two push_off()s.  Also, if interrupts
 ///are initially off, then push_off, pop_off leaves them off.
 pub fn popOff() void {
-    var c = Cpu.myCpu();
+    const c = Cpu.current();
     if (riscv.intrGet()) {
         panic(&@src(), "interruptible");
     }

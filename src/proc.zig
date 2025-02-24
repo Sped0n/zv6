@@ -39,13 +39,12 @@ pub const Cpu = struct {
 
     const Self = @This();
 
-    pub fn cpuId() u64 {
+    pub fn id() u64 {
         return riscv.rTp();
     }
 
-    pub fn myCpu() *Self {
-        const id = Self.cpuId();
-        return &cpus[id];
+    pub fn current() *Self {
+        return &cpus[Self.id()];
     }
 };
 
