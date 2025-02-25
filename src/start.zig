@@ -33,44 +33,41 @@ export var stack0 align(16) = [_]u8{0} ** (4096 * param.n_cpu);
 
 export fn start() callconv(.C) noreturn {
     // set M Previous Privilege mode to Supervisor. for mret.
-    var mstatus = riscv.rMstatus();
-    mstatus &= ~(@intFromEnum(riscv.MStatus.mpp_machine_or_mask));
-    mstatus |= @intFromEnum(riscv.MStatus.mpp_supervisor);
-    riscv.wMstatus(mstatus);
+    var mstatus = riscv.mstatus.read();
+    mstatus &= ~(@intFromEnum(riscv.MStatusValue.mpp_machine_or_mask));
+    mstatus |= @intFromEnum(riscv.MStatusValue.mpp_supervisor);
+    riscv.mstatus.write(mstatus);
 
     // set M Exception Program Counter to main, for mret.
-    riscv.wMepc(@intFromPtr(&main.main));
+    riscv.mepc.write(@intFromPtr(&main.main));
 
     // disable paging for now.
-    riscv.wSatp(0);
+    riscv.satp.write(0);
 
     // delegate all interrupts and exceptions to supervisor mode.
-    riscv.wMedeleg(@as(u64, 0xffff));
-    riscv.wMideleg(@as(u64, 0xffff));
-    riscv.wSie(
-        riscv.rSie() | @intFromEnum(
-            riscv.Sie.seie,
+    riscv.medeleg.write(@as(u64, 0xffff));
+    riscv.mideleg.write(@as(u64, 0xffff));
+    riscv.sie.write(
+        riscv.sie.read() | @intFromEnum(
+            riscv.SieValue.seie,
         ) | @intFromEnum(
-            riscv.Sie.stie,
+            riscv.SieValue.stie,
         ) | @intFromEnum(
-            riscv.Sie.ssie,
+            riscv.SieValue.ssie,
         ),
     );
 
     // configure Physical Memory Protection to give supervisor mode
     // access to all of physical memory.
-    riscv.wPmpaddr0(@as(u64, 0x3fffffffffffff));
-    riscv.wPmpcfg0(@as(u64, 0xf));
+    riscv.pmpaddr0.write(@as(u64, 0x3fffffffffffff));
+    riscv.pmpcfg0.write(@as(u64, 0xf));
 
     // ask for clock interrupts.
     // timerInit();
 
     // keep each CPU's hartid in its tp register, for cpuid().
-    const id = riscv.rMhartid();
-    riscv.wTp(id);
-
-    // set sscratch to trap_frame
-    riscv.wSscratch(memlayout.trap_frame);
+    const cpu_id = riscv.mhartid.read();
+    riscv.tp.write(cpu_id);
 
     asm volatile ("mret");
 
@@ -80,14 +77,14 @@ export fn start() callconv(.C) noreturn {
 
 fn timerInit() void {
     // enable supervisor-mode timer interrupts.
-    riscv.wMie(riscv.rMie() | @intFromEnum(riscv.Sie.stie));
+    riscv.mie.write(riscv.mie.read() | @intFromEnum(riscv.SieValue.stie));
 
     // enable the sstc extension (i.e. simecmp).
-    riscv.wMenvcfg(riscv.rMenvcfg() | @as(u64, 1 << 63));
+    riscv.menvcfg.write(riscv.menvcfg.read() | @as(u64, 1 << 63));
 
     // allow supervisor to use stimecmp and time.
-    riscv.wMcounteren(riscv.rMcounteren() | @as(u64, 2));
+    riscv.mcounteren.write(riscv.mcounteren.read() | @as(u64, 2));
 
     // ask for the very first timer interrupt.
-    riscv.wStimecmp(riscv.rTime() + @as(u64, 1000000));
+    riscv.stimecmp.write(riscv.time.read() + @as(u64, 1000000));
 }

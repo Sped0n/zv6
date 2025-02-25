@@ -1,7 +1,7 @@
 const riscv = @import("riscv.zig");
 const kalloc = @import("kalloc.zig");
 const memlayout = @import("memlayout.zig");
-const proc = @import("proc.zig");
+const Proc = @import("proc.zig").Proc;
 const panic = @import("printf.zig").panic;
 
 ///kernel page table
@@ -112,7 +112,7 @@ pub fn kvmMake() riscv.PageTable {
     );
 
     // allocate and map a kernel stack for each process.
-    proc.mapStacks(kpgtbl);
+    Proc.mapStacks(kpgtbl);
 
     return kpgtbl;
 }
@@ -128,7 +128,7 @@ pub fn kvmInitHart() void {
     // wait for any previous writes to the page table memory to finish.
     riscv.sfenceVma();
 
-    riscv.wSatp(riscv.makeSatp(kernel_page_table));
+    riscv.satp.write(riscv.makeSatp(kernel_page_table));
 
     // flush stale entries from the TLB.
     riscv.sfenceVma();
@@ -300,7 +300,7 @@ pub fn uvmUnmap(
             if ((pte & @intFromEnum(
                 riscv.PteFlag.v,
             )) == 0) panic(&@src(), "not mapped");
-            if (riscv.rPteFlags(pte) == @intFromEnum(
+            if (riscv.pteFlags(pte) == @intFromEnum(
                 riscv.PteFlag.v,
             )) panic(&@src(), "not a leaf");
 
@@ -485,7 +485,7 @@ pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) bool {
             "uvmCopy: page not present",
         );
         const phy_addr = riscv.pte2Pa(pte);
-        const flags = riscv.rPteFlags(pte);
+        const flags = riscv.pteFlags(pte);
 
         const mem_ptr = kalloc.alloc();
         if (mem_ptr == null) {

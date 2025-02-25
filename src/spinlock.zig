@@ -10,7 +10,7 @@ cpu: ?*Cpu,
 
 const Self = @This();
 
-pub fn init(self: *Self, name: []const u8) void {
+pub fn init(self: *Self, comptime name: []const u8) void {
     self.* = Self{
         .locked = 0,
         .name = name,

@@ -41,8 +41,6 @@ var tx_buffer: [tx_buffer_size]u8 = undefined;
 var tx_w: u64 = 0;
 var tx_r: u64 = 0;
 
-const Self = @This();
-
 pub fn init() void {
     // disable interrupts.
     writeReg(
