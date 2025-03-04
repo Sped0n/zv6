@@ -40,7 +40,10 @@ pub fn printf(comptime format: []const u8, args: anytype) void {
     ) catch unreachable;
 }
 
-pub fn panic(src: *const SourceLocation, info: []const u8) void {
+pub fn panic(
+    comptime src: *const SourceLocation,
+    comptime info: []const u8,
+) noreturn {
     lock_allowed_to_use = false;
     printf("Panic from <{s}>: {s}\n", .{ src.fn_name, info });
     panicked = true; // freeze uart output from other CPUs
@@ -53,7 +56,7 @@ pub fn checkPanicked() void {
     }
 }
 
-pub fn assert(ok: bool, src: *const SourceLocation) void {
+pub fn assert(ok: bool, comptime src: *const SourceLocation) void {
     if (ok) return;
     lock_allowed_to_use = false;
     printf("Assertion failed: {s}:{s}", .{ src.file, src.line });
