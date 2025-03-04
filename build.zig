@@ -16,11 +16,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .code_model = .medium,
     });
-    kernel.addIncludePath(b.path("src"));
     kernel.setLinkerScript(b.path("src/kernel.ld"));
-    kernel.addAssemblyFile(b.path("src/trampoline.S"));
-    // kernel.addAssemblyFile(b.path("src/kernelvec.S"));
-    // kernel.addAssemblyFile(b.path("src/swtch.S"));
+    kernel.addAssemblyFile(b.path("src/asm/entry.S"));
+    kernel.addAssemblyFile(b.path("src/asm/trampoline.S"));
+    kernel.addAssemblyFile(b.path("src/asm/kernelvec.S"));
+    kernel.addAssemblyFile(b.path("src/asm/swtch.S"));
+    kernel.entry = .{ .symbol_name = "_entry" };
 
     b.installArtifact(kernel);
 
@@ -32,11 +33,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .code_model = .medium,
     });
-    exe_check.addIncludePath(b.path("src"));
     exe_check.setLinkerScript(b.path("src/kernel.ld"));
-    exe_check.addAssemblyFile(b.path("src/trampoline.S"));
-    exe_check.addAssemblyFile(b.path("src/kernelvec.S"));
-    exe_check.addAssemblyFile(b.path("src/swtch.S"));
+    exe_check.addAssemblyFile(b.path("src/asm/entry.S"));
+    exe_check.addAssemblyFile(b.path("src/asm/trampoline.S"));
+    exe_check.addAssemblyFile(b.path("src/asm/kernelvec.S"));
+    exe_check.addAssemblyFile(b.path("src/asm/swtch.S"));
+    exe_check.entry = .{ .symbol_name = "_entry" };
 
     //  try to generate a unique GDB port
     const GDBPORT = 3333;
@@ -54,7 +56,7 @@ pub fn build(b: *std.Build) void {
         "-cpu",
         "rv64",
         "-smp",
-        "4",
+        "2",
         "-nographic",
         "-serial",
         "mon:stdio",
