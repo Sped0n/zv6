@@ -36,7 +36,7 @@ pub fn init() void {
 
 ///set up to take exceptions and traps while in the kernel
 pub fn initHart() void {
-    riscv.wStvec(@intFromPtr(kernelvec));
+    riscv.stvec.write(@intFromPtr(&kernelvec));
 }
 
 ///Handle an interrupt, exception, or system call from user space.
@@ -184,6 +184,7 @@ pub fn clockIntr() void {
         defer ticks_lock.release();
 
         ticks += 1;
+        printf("t", .{});
         Proc.wakeUp(@intFromPtr(&ticks));
     }
 
