@@ -1,6 +1,6 @@
 const builtin = @import("std").builtin;
 
-const Cpu = @import("proc.zig").Cpu;
+const Cpu = @import("proc/cpu.zig");
 const riscv = @import("riscv.zig");
 const panic = @import("printf.zig").panic;
 
@@ -64,7 +64,7 @@ pub fn pushOff() void {
 
     riscv.intrOff();
     const c = Cpu.current();
-    if (c.noff == 0) c.intena = old;
+    if (c.noff == 0) c.intr_enable = old;
     c.noff += 1;
 }
 
@@ -80,5 +80,5 @@ pub fn popOff() void {
         panic(&@src(), "noff not matched");
     }
     c.noff -= 1;
-    if (c.noff == 0 and c.intena) riscv.intrOn();
+    if (c.noff == 0 and c.intr_enable) riscv.intrOn();
 }
