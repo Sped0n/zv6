@@ -2,6 +2,7 @@ const Spinlock = @import("spinlock.zig");
 const memlayout = @import("memlayout.zig");
 const riscv = @import("riscv.zig");
 const panic = @import("printf.zig").panic;
+const printf = @import("printf.zig").printf;
 
 const end: *anyopaque = @ptrCast(@extern([*c]c_char, .{ .name = "end" }));
 
@@ -11,6 +12,8 @@ const Block = struct {
 
 var lock: Spinlock = undefined;
 var freelist: ?*Block = null;
+
+var alloc_cnt: u64 = 0;
 
 const Self = @This();
 
@@ -75,6 +78,7 @@ pub fn alloc() ?*anyopaque {
         r = freelist;
         if (r) |page| {
             freelist = @as(*Block, @ptrCast(page)).next;
+            alloc_cnt += 1;
         }
     }
 
@@ -86,4 +90,8 @@ pub fn alloc() ?*anyopaque {
     }
 
     return null;
+}
+
+pub fn printAllocCnt() void {
+    printf("alloc_cnt: {d}", .{alloc_cnt});
 }
