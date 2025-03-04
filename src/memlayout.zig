@@ -69,8 +69,8 @@ pub const trampoline: u64 = riscv.max_va - @as(u64, riscv.pg_size);
 
 ///map kernel stacks beneath the trampoline,
 ///each surrounded by invalid guard pages.
-pub inline fn kStack(p: u64) u64 {
-    return trampoline - (p + 1) * 2 * riscv.pg_size;
+pub inline fn kernelStack(proc_index: u64) u64 {
+    return trampoline - (proc_index + 1) * 2 * riscv.pg_size;
 }
 
 // User memory layout.
