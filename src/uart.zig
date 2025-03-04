@@ -39,7 +39,7 @@ inline fn readReg(offset: u64) u8 {
 const tx_buffer_size = 32;
 
 var tx_lock: Spinlock = undefined;
-var tx_buffer: [tx_buffer_size]u8 = undefined;
+var tx_buffer: [tx_buffer_size]u8 = [_]u8{0} ** 32;
 var tx_w: u64 = 0;
 var tx_r: u64 = 0;
 
@@ -72,13 +72,13 @@ pub fn init() void {
         fcr_fifo_enable | fcr_fifo_clear,
     );
 
+    // enable transmit and receive interrupts.
     writeReg(
         @as(u64, ier),
         ier_tx_enable | ier_rx_enable,
     );
 
     Spinlock.init(&tx_lock, "uart");
-    tx_buffer = [_]u8{0} ** 32;
 }
 
 ///add a character to the output buffer and tell the

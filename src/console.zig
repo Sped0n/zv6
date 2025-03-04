@@ -2,7 +2,8 @@ const uart = @import("uart.zig");
 const Spinlock = @import("spinlock.zig");
 const Proc = @import("proc/proc.zig");
 
-const backspace = 0x100;
+const backspace = 0x08;
+const delete = 0x7f;
 
 var lock: Spinlock = undefined;
 const buffer_size = 128;
@@ -21,9 +22,9 @@ inline fn ctrl(x: u8) u8 {
 pub fn putChar(char: u8) void {
     if (char == backspace) {
         // if the user typed backspace, overwrite with a space.
-        uart.putCharSync(8); // \b
+        uart.putCharSync(backspace); // \b
         uart.putCharSync(' ');
-        uart.putCharSync(8); // \b
+        uart.putCharSync(backspace); // \b
     } else {
         uart.putCharSync(char);
     }
@@ -107,14 +108,14 @@ pub fn intr(char: u8) void {
     defer lock.release();
 
     switch (char) {
-        'H', '\x7f' => {
+        backspace, delete => {
             if (edit_index != write_index) {
                 edit_index -= 1;
                 putChar(backspace);
             }
         },
         else => elseBlk: {
-            if (char == 0 or edit_index - read_index < buffer_size)
+            if (char == 0 or (edit_index - read_index) > buffer_size)
                 break :elseBlk;
 
             const local_char: u8 = if (char == '\r') '\n' else char;

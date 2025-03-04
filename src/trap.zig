@@ -4,6 +4,7 @@ const plic = @import("plic.zig");
 const memlayout = @import("memlayout.zig");
 const Proc = @import("proc/proc.zig");
 const Cpu = @import("proc/cpu.zig");
+const uart = @import("uart.zig");
 
 const printf = @import("printf.zig").printf;
 const panic = @import("printf.zig").panic;
@@ -142,7 +143,7 @@ pub fn userTrapRet() void {
     // jump to userret in trampoline.S at the top of memory, which
     // switches to the user page table, restores user registers,
     // and switches to user mode with sret.
-    const trampoline_userret = @as(fn (tp: u64, satp: u64) void, @ptrFromInt(
+    const trampoline_userret = @as(*const fn (tp: u64, satp: u64) void, @ptrFromInt(
         memlayout.trampoline + (@intFromPtr(userret) - @intFromPtr(trampoline)),
     ));
     trampoline_userret(memlayout.trap_frame, satp);
@@ -178,13 +179,12 @@ pub export fn kernelTrap() void {
     riscv.sstatus.write(sstatus);
 }
 
-pub fn clockIntr() void {
+fn clockIntr() void {
     if (Cpu.id() == 0) {
         ticks_lock.acquire();
         defer ticks_lock.release();
 
         ticks += 1;
-        printf("t", .{});
         Proc.wakeUp(@intFromPtr(&ticks));
     }
 
@@ -204,7 +204,7 @@ pub fn devIntr() WhichDev {
         const irq = plic.claim();
 
         if (irq == memlayout.uart0_irq) {
-            // TODO: uartIntr()
+            uart.intr();
         } else if (irq == memlayout.virtio0_irq) {
             // TODO: virtio_disk_intr()
         } else if (irq > 0) {
