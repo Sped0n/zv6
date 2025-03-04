@@ -3,6 +3,8 @@ const std = @import("std");
 const memlayout = @import("memlayout.zig");
 const Spinlock = @import("spinlock.zig");
 const printf = @import("printf.zig");
+const Proc = @import("proc/proc.zig");
+const console = @import("console.zig");
 
 // the UART control registers.
 // some have different meanings for
@@ -92,7 +94,9 @@ pub fn putChar(char: u8) void {
     printf.checkPanicked();
 
     while (tx_w == tx_r + tx_buffer_size) {
-        // TODO: sleep
+        // buffer is full.
+        // wait for start() to open up space in the buffer.
+        Proc.sleep(@intFromPtr(&tx_r), &tx_lock);
     }
     tx_buffer[tx_w % tx_buffer_size] = char;
     tx_w += 1;
@@ -137,7 +141,7 @@ pub fn start() void {
         tx_r += 1;
 
         // maybe putChar() is waiting for space in the buffer.
-        // TODO: wakeup
+        Proc.wakeUp(@intFromPtr(&tx_r));
 
         writeReg(@as(u64, thr), char);
     }
@@ -151,4 +155,22 @@ pub fn getChar() ?u8 {
     } else {
         return null;
     }
+}
+
+// handle a uart interrupt, raised because input has
+// arrived, or the uart is ready for more output, or
+// both. called from devintr().
+pub fn intr() void {
+    while (true) {
+        if (getChar()) |char| {
+            console.intr(char);
+        } else {
+            break;
+        }
+    }
+
+    tx_lock.acquire();
+    defer tx_lock.release();
+
+    start();
 }
