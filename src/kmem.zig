@@ -13,8 +13,6 @@ const Block = struct {
 var lock: Spinlock = undefined;
 var freelist: ?*Block = null;
 
-var alloc_cnt: u64 = 0;
-
 const Self = @This();
 
 pub fn init() void {
@@ -78,7 +76,6 @@ pub fn alloc() ?*anyopaque {
         r = freelist;
         if (r) |page| {
             freelist = @as(*Block, @ptrCast(page)).next;
-            alloc_cnt += 1;
         }
     }
 
@@ -90,8 +87,4 @@ pub fn alloc() ?*anyopaque {
     }
 
     return null;
-}
-
-pub fn printAllocCnt() void {
-    printf("alloc_cnt: {d}", .{alloc_cnt});
 }

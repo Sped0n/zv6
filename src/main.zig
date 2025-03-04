@@ -1,35 +1,30 @@
 const builtin = @import("std").builtin;
 
 const riscv = @import("riscv.zig");
-const proc = @import("proc.zig");
-const Cpu = proc.Cpu;
+const Proc = @import("proc/proc.zig");
+const Cpu = @import("proc/cpu.zig");
+const scheduler = @import("proc/scheduler.zig");
 const console = @import("console.zig");
 const printf = @import("printf.zig");
-const kalloc = @import("kalloc.zig");
+const kmem = @import("kmem.zig");
 const vm = @import("vm.zig");
+const trap = @import("trap.zig");
+const plic = @import("plic.zig");
 
 var started = false;
-
-comptime {
-    asm (
-        \\.global hang
-        \\
-        \\hang:
-        \\    wfi  # Wait For Interrupt
-        \\    j hang # Jump back to wfi
-    );
-}
-
-extern fn hang() void;
 
 pub fn main() void {
     if (Cpu.id() == 0) {
         console.init();
         printf.printf("zv6 hello world\n", .{});
-        kalloc.init();
+        kmem.init();
         vm.kvmInit();
         vm.kvmInitHart();
-        proc.init();
+        Proc.init();
+        trap.init();
+        trap.initHart();
+        plic.init();
+        plic.initHart();
 
         printf.printf("hart 0 init\n", .{});
 
@@ -39,7 +34,6 @@ pub fn main() void {
             true,
             builtin.AtomicOrder.release,
         );
-        while (true) {}
     } else {
         while (@atomicLoad(
             bool,
@@ -47,8 +41,11 @@ pub fn main() void {
             builtin.AtomicOrder.acquire,
         ) == false) {}
         vm.kvmInitHart();
+        trap.initHart();
+        plic.initHart();
         const cpuid: u8 = @intCast(Cpu.id());
         printf.printf("hart {d} init\n", .{cpuid});
-        hang();
     }
+
+    scheduler.scheduler();
 }

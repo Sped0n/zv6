@@ -104,9 +104,7 @@ pub fn init() void {
         const p = &(procs[i]);
         Spinlock.init(&(p.lock), "proc");
         p.state = .unused;
-        p.kstack = memlayout.kStack(
-            @intFromPtr(p) - @intFromPtr(&(procs[0])),
-        );
+        p.kstack = memlayout.kernelStack(i);
     }
 }
 
