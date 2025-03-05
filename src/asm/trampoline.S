@@ -12,13 +12,13 @@
 
 .section trampsec
 .globl trampoline
-.globl usertrap
+.globl userTrap
 trampoline:
 .align 4
-.globl uservec
-uservec:    
+.globl userVec
+userVec:    
 	#
-        # trap.c sets stvec to point here, so
+        # userTrapRet sets stvec to point here, so
         # traps from user space start here,
         # in supervisor mode, but with a
         # user page table.
@@ -89,16 +89,15 @@ uservec:
         # jump to usertrap(), which does not return
         jr t0
 
-.globl userret
-userret:
-        # userret(pagetable)
-        # called by usertrapret() in trap.c to
+.globl userRet
+userRet:
+        # userret(TRAPFRAME, pagetable)
+        # called by userTrapRet() in trap.zig to
         # switch from kernel to user.
         # a0: TRAPFRAME, in user page table
         # a1: user page table, for satp.
 
         # switch to the user page table.
-        sfence.vma zero, zero
         csrw satp, a1
         sfence.vma zero, zero
 
@@ -144,5 +143,5 @@ userret:
         csrrw a0, sscratch, a0
         
         # return to user mode and user pc.
-        # usertrapret() set up sstatus and sepc.
+        # userTrapRet() set up sstatus and sepc.
         sret
