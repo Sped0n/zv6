@@ -9,7 +9,7 @@
 .globl kernelTrap
 .globl kernelVec
 .align 4
-kernelvec:
+kernelVec:
         # make room to save registers.
         addi sp, sp, -256
 

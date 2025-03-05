@@ -1,10 +1,10 @@
 const std = @import("std");
 
-const memlayout = @import("memlayout.zig");
-const Spinlock = @import("spinlock.zig");
-const printf = @import("printf.zig");
-const Proc = @import("proc/proc.zig");
 const console = @import("console.zig");
+const memlayout = @import("../memlayout.zig");
+const printf = @import("../printf.zig");
+const Spinlock = @import("../lock/spinlock.zig");
+const Process = @import("../process/process.zig");
 
 // the UART control registers.
 // some have different meanings for
@@ -96,7 +96,7 @@ pub fn putChar(char: u8) void {
     while (tx_w == tx_r + tx_buffer_size) {
         // buffer is full.
         // wait for start() to open up space in the buffer.
-        Proc.sleep(@intFromPtr(&tx_r), &tx_lock);
+        Process.sleep(@intFromPtr(&tx_r), &tx_lock);
     }
     tx_buffer[tx_w % tx_buffer_size] = char;
     tx_w += 1;
@@ -141,7 +141,7 @@ pub fn start() void {
         tx_r += 1;
 
         // maybe putChar() is waiting for space in the buffer.
-        Proc.wakeUp(@intFromPtr(&tx_r));
+        Process.wakeUp(@intFromPtr(&tx_r));
 
         writeReg(@as(u64, thr), char);
     }

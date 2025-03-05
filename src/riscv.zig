@@ -284,8 +284,6 @@ pub const PteFlag = enum(u64) {
     u = 1 << 4, // user can access
 };
 
-// shift a physical address to the right place for a PTE.
-
 ///Physical Address to Page Table Entry
 pub inline fn pa2Pte(pa: u64) Pte {
     return @as(u64, pa >> 12) << 10;
@@ -300,12 +298,14 @@ pub inline fn pteFlags(pte: Pte) u64 {
 }
 
 const px_mask = 0x1FF; // 9 bits
-inline fn pxShift(level: u64) u6 {
+
+inline fn pageTableIdxShift(level: u64) u6 {
     return @intCast(pg_shift + 9 * level);
 }
+
 ///Extract the three 9-bit page table indices from a virtual address.
-pub inline fn px(level: u64, va: u64) u64 {
-    return (va >> pxShift(level)) & px_mask;
+pub inline fn pageTableIdxFromVa(level: u64, va: u64) u64 {
+    return (va >> pageTableIdxShift(level)) & px_mask;
 }
 
 ///one beyond the highest possible virtual address.

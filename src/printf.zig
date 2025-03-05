@@ -2,8 +2,8 @@ const io = @import("std").io;
 const fmt = @import("std").fmt;
 const SourceLocation = @import("std").builtin.SourceLocation;
 
-const console = @import("console.zig");
-const Spinlock = @import("spinlock.zig");
+const console = @import("driver/console.zig");
+const Spinlock = @import("lock/spinlock.zig");
 
 var panicked: bool = false;
 

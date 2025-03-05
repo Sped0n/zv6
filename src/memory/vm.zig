@@ -1,30 +1,24 @@
-const riscv = @import("riscv.zig");
-const kmem = @import("kmem.zig");
-const memlayout = @import("memlayout.zig");
-const Proc = @import("proc/proc.zig");
-const misc = @import("misc.zig");
+const riscv = @import("../riscv.zig");
+const misc = @import("../misc.zig");
+const memlayout = @import("../memlayout.zig");
+const kmem = @import("../memory/kmem.zig");
+const Process = @import("../process/process.zig");
 
-const panic = @import("printf.zig").panic;
+const panic = @import("../printf.zig").panic;
 
 ///kernel page table
 var kernel_page_table: riscv.PageTable = undefined;
 
-///kernel.ld set this to end of kernel code.
-const etext: *anyopaque = @ptrCast(@extern(
-    [*c]c_char,
-    .{ .name = "etext" },
-));
+// kernel.ld set this to end of kernel code.
+const etext = @extern(*u8, .{ .name = "etext" });
 
-///trampoline.S
-const trampoline: *anyopaque = @ptrCast(@extern(
-    [*c]c_char,
-    .{ .name = "trampoline" },
-));
+// trampoline.S
+const trampoline = @extern(*u8, .{ .name = "trampoline" });
 
 pub fn kvmMake() riscv.PageTable {
     const kpgtbl: riscv.PageTable = @alignCast(@ptrCast(kmem.alloc()));
 
-    const mem = @as([*]u8, @ptrCast(kpgtbl))[0..riscv.pg_size];
+    const mem: *[4096]u8 = @ptrCast(kpgtbl);
     @memset(mem, 0);
 
     const rw_permission: u64 = @intFromEnum(
@@ -94,7 +88,7 @@ pub fn kvmMake() riscv.PageTable {
     );
 
     // allocate and map a kernel stack for each process.
-    Proc.mapStacks(kpgtbl);
+    Process.mapStacks(kpgtbl);
 
     return kpgtbl;
 }
@@ -140,7 +134,7 @@ pub fn walk(
     var level: u64 = 2;
     while (level > 0) : (level -= 1) {
         const pte_ptr: *riscv.Pte = &local_page_table[
-            riscv.px(
+            riscv.pageTableIdxFromVa(
                 level,
                 virt_addr,
             )
@@ -151,13 +145,12 @@ pub fn walk(
         } else {
             if (!alloc) return null;
 
-            const mem_ptr = kmem.alloc();
-            if (mem_ptr == null) {
+            if (kmem.alloc()) |page_ptr| {
+                local_page_table = @alignCast(@ptrCast(page_ptr));
+            } else {
                 panic(&@src(), "kalloc failed");
                 return null;
             }
-
-            local_page_table = @alignCast(@ptrCast(mem_ptr.?));
 
             const mem = @as(
                 [*]u8,
@@ -171,7 +164,7 @@ pub fn walk(
         }
     }
 
-    return &local_page_table[riscv.px(0, virt_addr)];
+    return &local_page_table[riscv.pageTableIdxFromVa(0, virt_addr)];
 }
 
 ///Look up a virtual address, return the physical address,
@@ -450,10 +443,11 @@ pub fn uvmFree(page_table: riscv.PageTable, size: u64) void {
 ///its memory into a child's page table.
 ///Copies both the page table and the
 ///physical memory.
-///returns 0 on success, -1 on failure.
+///returns true on success, false on failure.
 ///frees any allocated pages on failure.
 pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) bool {
     var addr: usize = 0;
+
     while (addr < size) : (addr += riscv.pg_size) {
         const pte_ptr = walk(
             old,
@@ -469,8 +463,10 @@ pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) bool {
         const phy_addr = riscv.pte2Pa(pte);
         const flags = riscv.pteFlags(pte);
 
-        const mem_ptr = kmem.alloc();
-        if (mem_ptr == null) {
+        var mem_ptr: *[4096]u8 = undefined;
+        if (kmem.alloc()) |page_ptr| {
+            mem_ptr = page_ptr;
+        } else {
             uvmUnmap(
                 new,
                 0,
@@ -481,8 +477,8 @@ pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) bool {
         }
 
         _ = misc.memMove(
-            @ptrCast(mem_ptr.?),
-            @ptrCast(phy_addr),
+            mem_ptr,
+            @ptrFromInt(phy_addr),
             riscv.pg_size,
         );
 
@@ -490,7 +486,7 @@ pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) bool {
             new,
             addr,
             riscv.pg_size,
-            @intFromPtr(mem_ptr.*),
+            @intFromPtr(mem_ptr),
             flags,
         )) {
             kmem.free(mem_ptr);
@@ -503,6 +499,7 @@ pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) bool {
             return false;
         }
     }
+
     return true;
 }
 

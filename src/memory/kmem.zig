@@ -1,10 +1,11 @@
-const Spinlock = @import("spinlock.zig");
-const memlayout = @import("memlayout.zig");
-const riscv = @import("riscv.zig");
-const panic = @import("printf.zig").panic;
-const printf = @import("printf.zig").printf;
+const Spinlock = @import("../lock/spinlock.zig");
+const memlayout = @import("../memlayout.zig");
+const riscv = @import("../riscv.zig");
 
-extern const end: *u8;
+const panic = @import("../printf.zig").panic;
+const printf = @import("../printf.zig").printf;
+
+const end = @extern(*u8, .{ .name = "end" });
 
 const Block = struct {
     next: ?*Block,

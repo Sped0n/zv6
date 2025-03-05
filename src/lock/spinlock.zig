@@ -1,8 +1,9 @@
 const builtin = @import("std").builtin;
 
-const Cpu = @import("proc/cpu.zig");
-const riscv = @import("riscv.zig");
-const panic = @import("printf.zig").panic;
+const riscv = @import("../riscv.zig");
+const Cpu = @import("../process/cpu.zig");
+
+const panic = @import("../printf.zig").panic;
 
 locked: u32,
 name: []const u8,

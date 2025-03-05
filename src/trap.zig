@@ -1,30 +1,22 @@
 const riscv = @import("riscv.zig");
-const Spinlock = @import("spinlock.zig");
-const plic = @import("plic.zig");
 const memlayout = @import("memlayout.zig");
-const Proc = @import("proc/proc.zig");
-const Cpu = @import("proc/cpu.zig");
-const uart = @import("uart.zig");
+const Spinlock = @import("lock/spinlock.zig");
+const Process = @import("process/process.zig");
+const Cpu = @import("process/cpu.zig");
+const uart = @import("driver/uart.zig");
+const plic = @import("driver/plic.zig");
 
 const printf = @import("printf.zig").printf;
 const panic = @import("printf.zig").panic;
 const assert = @import("printf.zig").assert;
 
-const trampoline: *anyopaque = @ptrCast(@extern(
-    [*c]c_char,
-    .{ .name = "trampoline" },
-));
-const uservec: *anyopaque = @ptrCast(@extern(
-    [*c]c_char,
-    .{ .name = "uservec" },
-));
-const userret: *anyopaque = @ptrCast(@extern(
-    [*c]c_char,
-    .{ .name = "userret" },
-));
+// trampoline.S
+const trampoline = @extern(*u8, .{ .name = "trampoline" });
+extern fn userVec() void;
+extern fn userRet() void;
 
-/// in kernelvec.S, calls kerneltrap().
-extern fn kernelvec() void;
+// in kernelvec.S, calls kernelTrap().
+extern fn kernelVec() void;
 
 const WhichDev = enum { not_recognize, other_dev, timer_intr };
 
@@ -37,7 +29,7 @@ pub fn init() void {
 
 ///set up to take exceptions and traps while in the kernel
 pub fn initHart() void {
-    riscv.stvec.write(@intFromPtr(&kernelvec));
+    riscv.stvec.write(@intFromPtr(&kernelVec));
 }
 
 ///Handle an interrupt, exception, or system call from user space.
@@ -49,9 +41,9 @@ pub fn userTrap() void {
 
     // send interrupt and exceptions to kernelTrap(),
     // since we're now in the kernel.
-    riscv.stvec.write(@intFromPtr(kernelvec));
+    riscv.stvec.write(@intFromPtr(kernelVec));
 
-    const proc = Proc.current() catch panic(
+    const proc = Process.current() catch panic(
         &@src(),
         "current proc is null",
     );
@@ -97,7 +89,7 @@ pub fn userTrap() void {
 
 ///return to user space
 pub fn userTrapRet() void {
-    const proc = Proc.current() catch panic(
+    const proc = Process.current() catch panic(
         &@src(),
         "current proc is null",
     );
@@ -111,7 +103,7 @@ pub fn userTrapRet() void {
 
     // send syscalls, interrupts, and exceptions to uservec in trampoline.S
     const trampoline_uservec_addr: u64 = memlayout.trampoline + (@intFromPtr(
-        uservec,
+        &userVec,
     ) - @intFromPtr(
         trampoline,
     ));
@@ -140,11 +132,11 @@ pub fn userTrapRet() void {
     // tell trampoline.S the user page table switch to.
     const satp = riscv.makeSatp(proc.page_table.?);
 
-    // jump to userret in trampoline.S at the top of memory, which
+    // jump to userRet in trampoline.S at the top of memory, which
     // switches to the user page table, restores user registers,
     // and switches to user mode with sret.
     const trampoline_userret = @as(*const fn (tp: u64, satp: u64) void, @ptrFromInt(
-        memlayout.trampoline + (@intFromPtr(userret) - @intFromPtr(trampoline)),
+        memlayout.trampoline + (@intFromPtr(&userRet) - @intFromPtr(trampoline)),
     ));
     trampoline_userret(memlayout.trap_frame, satp);
 }
@@ -168,9 +160,9 @@ pub export fn kernelTrap() void {
             "scause={x}, sepc={x}, stval={x}\n",
             .{ scause, riscv.sepc.read(), riscv.stval.read() },
         );
-    } else if (which_dev == .timer_intr and Proc.currentOrNull() != null) {
+    } else if (which_dev == .timer_intr and Process.currentOrNull() != null) {
         // give up the CPU if this is a timer interrupt.
-        Proc.yield();
+        Process.yield();
     }
 
     // the yield() may have caused some traps to occur,
@@ -185,7 +177,7 @@ fn clockIntr() void {
         defer ticks_lock.release();
 
         ticks += 1;
-        Proc.wakeUp(@intFromPtr(&ticks));
+        Process.wakeUp(@intFromPtr(&ticks));
     }
 
     // ask for the next timer interrupt. this also clears

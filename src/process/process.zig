@@ -1,12 +1,12 @@
 const builtin = @import("std").builtin;
 
 const param = @import("../param.zig");
-const Spinlock = @import("../spinlock.zig");
+const Spinlock = @import("../lock/spinlock.zig");
 const riscv = @import("../riscv.zig");
-const kmem = @import("../kmem.zig");
+const kmem = @import("../memory/kmem.zig");
 const memlayout = @import("../memlayout.zig");
-const vm = @import("../vm.zig");
-const File = @import("../file.zig");
+const vm = @import("../memory/vm.zig");
+const File = @import("../fs/file.zig");
 const misc = @import("../misc.zig");
 const trap = @import("../trap.zig");
 const Cpu = @import("cpu.zig");
@@ -19,10 +19,10 @@ const printf = @import("../printf.zig").printf;
 const sched = @import("scheduler.zig").sched;
 
 ///trampoline.S
-const trampoline: *anyopaque = @ptrCast(@extern(
-    [*c]c_char,
+const trampoline = @extern(
+    *u8,
     .{ .name = "trampoline" },
-));
+);
 
 pub const ProcState = enum {
     unused,

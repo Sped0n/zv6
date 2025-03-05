@@ -1,6 +1,6 @@
 const uart = @import("uart.zig");
-const Spinlock = @import("spinlock.zig");
-const Proc = @import("proc/proc.zig");
+const Spinlock = @import("../lock/spinlock.zig");
+const Process = @import("../process/process.zig");
 
 const backspace = 0x08;
 const delete = 0x7f;
@@ -36,7 +36,7 @@ pub fn write(is_user_src: bool, src_addr: u64, n: u32) u32 {
 
     while (i < n) : (i += 1) {
         var char: u8 = 0;
-        if (!Proc.eitherCopyIn(
+        if (!Process.eitherCopyIn(
             @ptrCast(&char),
             is_user_src,
             src_addr + i,
@@ -71,11 +71,11 @@ pub fn read(is_user_dst: bool, dest_addr: u64, n: u32) ?u32 {
         // wait until interrupt handler has put some
         // input into buffer.
         while (read_index == write_index) {
-            const curr_proc = Proc.currentOrNull();
+            const curr_proc = Process.currentOrNull();
             if (curr_proc != null and curr_proc.?.isKilled())
                 return null;
 
-            Proc.sleep(@intFromPtr(&read_index), &lock);
+            Process.sleep(@intFromPtr(&read_index), &lock);
         }
 
         char = buffer[read_index % buffer_size];
@@ -92,7 +92,7 @@ pub fn read(is_user_dst: bool, dest_addr: u64, n: u32) ?u32 {
 
         // copy the input byte to the user-space buffer.
         const char_buffer = char;
-        if (Proc.eitherCopyOut(
+        if (Process.eitherCopyOut(
             is_user_dst,
             dest_addr,
             @ptrCast(&char_buffer),
@@ -135,7 +135,7 @@ pub fn intr(char: u8) void {
             // wake up consoleread() if a whole line (or end-of-file)
             // has arrived.
             write_index = read_index;
-            Proc.wakeUp(@intFromPtr(&read_index));
+            Process.wakeUp(@intFromPtr(&read_index));
         },
     }
 }
