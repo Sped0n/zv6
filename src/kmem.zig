@@ -4,7 +4,7 @@ const riscv = @import("riscv.zig");
 const panic = @import("printf.zig").panic;
 const printf = @import("printf.zig").printf;
 
-const end: *anyopaque = @ptrCast(@extern([*c]c_char, .{ .name = "end" }));
+extern const end: *u8;
 
 const Block = struct {
     next: ?*Block,
@@ -13,20 +13,17 @@ const Block = struct {
 var lock: Spinlock = undefined;
 var freelist: ?*Block = null;
 
-const Self = @This();
-
 pub fn init() void {
     Spinlock.init(&lock, "kmem");
-    freeRange(end, @ptrFromInt(memlayout.phy_stop));
+    freeRange(@intFromPtr(end), memlayout.phy_stop);
 }
 
-fn freeRange(start_ptr: *anyopaque, end_ptr: *anyopaque) void {
-    var start_addr: u64 = riscv.pgRoundUp(@intFromPtr(start_ptr));
-    const end_addr: u64 = @intFromPtr(end_ptr);
-    while (start_addr + riscv.pg_size <= end_addr) : ({
-        start_addr += riscv.pg_size;
+fn freeRange(start_addr: u64, end_addr: u64) void {
+    var local_start_addr: u64 = riscv.pgRoundUp(start_addr);
+    while (local_start_addr + riscv.pg_size <= end_addr) : ({
+        local_start_addr += riscv.pg_size;
     }) {
-        free(@ptrFromInt(start_addr));
+        free(@ptrFromInt(local_start_addr));
     }
 }
 
@@ -34,7 +31,7 @@ fn freeRange(start_ptr: *anyopaque, end_ptr: *anyopaque) void {
 ///which normally should have been returned by a
 ///call to alloc().  (The exception is when
 ///initializing the allocator; see init above.)
-pub fn free(page_ptr: *anyopaque) void {
+pub fn free(page_ptr: *[4096]u8) void {
     const page_addr: u64 = @intFromPtr(page_ptr);
 
     // not aligned.
@@ -52,10 +49,9 @@ pub fn free(page_ptr: *anyopaque) void {
     }
 
     // fill with junk to catch dangling refs.
-    const mem = @as([*]u8, @ptrCast(page_ptr))[0..riscv.pg_size];
-    @memset(mem, 1);
+    @memset(page_ptr, 1);
 
-    var r: *Block = @alignCast(@ptrCast(page_ptr));
+    var r: *Block = @ptrFromInt(@intFromPtr(page_ptr));
 
     lock.acquire();
     defer lock.release();
@@ -67,7 +63,7 @@ pub fn free(page_ptr: *anyopaque) void {
 ///Allocate one 4096-byte page of physical memory.
 ///Returns a pointer that the kernel can use.
 ///Returns null if the memory cannot be allocated.
-pub fn alloc() ?*anyopaque {
+pub fn alloc() ?*[4096]u8 {
     var r: ?*Block = null;
 
     {
@@ -81,9 +77,9 @@ pub fn alloc() ?*anyopaque {
 
     if (r) |page| {
         // fill with junk
-        const mem = @as([*]u8, @ptrCast(page))[0..riscv.pg_size];
+        const mem = @as(*[4096]u8, @ptrCast(page));
         @memset(mem, 5);
-        return page;
+        return mem;
     }
 
     return null;
