@@ -82,9 +82,6 @@ pub fn build(b: *std.Build) void {
         // you might need to use `-s -p <port>` instead.
         "-gdb",
         std.fmt.allocPrint(b.allocator, "tcp::{}", .{GDBPORT}) catch unreachable,
-        //"-s", // Use -s and -p if -gdb doesn't work
-        //"-p",
-        //std.fmt.allocPrint(b.allocator, "{}", .{GDBPORT}) catch unreachable,
         "-S", // Freeze CPU at startup
         "-serial",
         "mon:stdio",
