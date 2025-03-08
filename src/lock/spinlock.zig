@@ -4,7 +4,7 @@ const panic = @import("../printf.zig").panic;
 const Cpu = @import("../process/cpu.zig");
 const riscv = @import("../riscv.zig");
 
-locked: u32,
+locked: bool,
 name: []const u8,
 cpu: ?*Cpu,
 
@@ -12,7 +12,7 @@ const Self = @This();
 
 pub fn init(self: *Self, comptime name: []const u8) void {
     self.* = Self{
-        .locked = 0,
+        .locked = false,
         .name = name,
         .cpu = null,
     };
@@ -25,12 +25,12 @@ pub fn acquire(self: *Self) void {
     if (self.holding()) panic(&@src(), "acquire while holding");
 
     while (@atomicRmw(
-        u32,
+        bool,
         &self.locked,
         builtin.AtomicRmwOp.Xchg,
-        1,
+        true,
         builtin.AtomicOrder.acquire,
-    ) != 0) {}
+    ) != false) {}
 
     // Record info about lock acquisition for holding() and debugging.
     self.cpu = Cpu.current();
@@ -43,17 +43,19 @@ pub fn release(self: *Self) void {
     self.cpu = null;
 
     @atomicStore(
-        u32,
+        bool,
         &self.locked,
-        0,
+        false,
         builtin.AtomicOrder.release,
     );
 
     popOff();
 }
 
+///Check whether this cpu is holding the lock.
+///Interrupts must be off.
 pub fn holding(self: *Self) bool {
-    return (self.locked > 0) and (self.cpu == Cpu.current());
+    return self.locked and self.cpu == Cpu.current();
 }
 
 ///push_off/pop_off are like intr_off()/intr_on() except that they are matched:
