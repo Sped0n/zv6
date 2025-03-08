@@ -1,11 +1,11 @@
-const Spinlock = @import("../lock/spinlock.zig");
+const SpinLock = @import("../lock/spinlock.zig");
 const Process = @import("../process/process.zig");
 const uart = @import("uart.zig");
 
 const backspace = 0x08;
 const delete = 0x7f;
 
-var lock: Spinlock = undefined;
+var lock: SpinLock = undefined;
 const buffer_size = 128;
 var buffer: [buffer_size]u8 = [_]u8{0} ** buffer_size;
 var read_index: u32 = 0;
@@ -141,7 +141,7 @@ pub fn intr(char: u8) void {
 }
 
 pub fn init() void {
-    Spinlock.init(&lock, "cons");
+    SpinLock.init(&lock, "cons");
     uart.init();
 
     // TODO: devsw

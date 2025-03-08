@@ -1,7 +1,7 @@
 const builtin = @import("std").builtin;
 
 const File = @import("../fs/file.zig");
-const Spinlock = @import("../lock/spinlock.zig");
+const SpinLock = @import("../lock/spinlock.zig");
 const memlayout = @import("../memlayout.zig");
 const kmem = @import("../memory/kmem.zig");
 const vm = @import("../memory/vm.zig");
@@ -32,7 +32,7 @@ pub const ProcState = enum {
     zombie,
 };
 
-lock: Spinlock,
+lock: SpinLock,
 
 // p->lock must be held when using these:
 state: ProcState, // Process state
@@ -59,13 +59,13 @@ pub var procs: [param.n_proc]Self = undefined;
 var init_proc: *Self = undefined;
 
 var nextpid: i32 = 1;
-var pid_lock: Spinlock = undefined;
+var pid_lock: SpinLock = undefined;
 
 ///helps ensure that wakeups of wait()ing
 ///parents are not lost. helps obey the
 ///memory model when using p->parent.
 ///must be acquired before any p->lock.
-var wait_lock: Spinlock = undefined;
+var wait_lock: SpinLock = undefined;
 
 const Self = @This();
 
@@ -97,11 +97,11 @@ pub fn mapStacks(kpgtbl: riscv.PageTable) void {
 pub fn init() void {
     // NOTE: don't try to iterate on uninitialized procs
     // see https://github.com/ziglang/zig/issues/13934
-    Spinlock.init(&pid_lock, "nextpid");
-    Spinlock.init(&wait_lock, "wait_lock");
+    SpinLock.init(&pid_lock, "nextpid");
+    SpinLock.init(&wait_lock, "wait_lock");
     for (0..param.n_proc) |i| {
         const p = &(procs[i]);
-        Spinlock.init(&(p.lock), "proc");
+        SpinLock.init(&(p.lock), "proc");
         p.state = .unused;
         p.kstack = memlayout.kernelStack(i);
     }
@@ -109,8 +109,8 @@ pub fn init() void {
 
 ///Return the current struct proc *.
 pub fn current() !*Self {
-    Spinlock.pushOff();
-    defer Spinlock.popOff();
+    SpinLock.pushOff();
+    defer SpinLock.popOff();
 
     const c = Cpu.current();
     if (c.proc) |p| {
@@ -121,8 +121,8 @@ pub fn current() !*Self {
 }
 ///Return the current struct proc *, or null if none.
 pub fn currentOrNull() ?*Self {
-    Spinlock.pushOff();
-    defer Spinlock.popOff();
+    SpinLock.pushOff();
+    defer SpinLock.popOff();
 
     const c = Cpu.current();
     return c.proc;
@@ -472,7 +472,7 @@ pub fn forkRet() void {
 
 ///Atomically release lock and sleep on chan.
 ///Reacquires lock when awakened.
-pub fn sleep(chan_addr: u64, lock: *Spinlock) void {
+pub fn sleep(chan_addr: u64, lock: *SpinLock) void {
     const proc = current() catch panic(
         &@src(),
         "current proc is null",

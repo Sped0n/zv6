@@ -3,12 +3,12 @@ const io = @import("std").io;
 const SourceLocation = @import("std").builtin.SourceLocation;
 
 const console = @import("driver/console.zig");
-const Spinlock = @import("lock/spinlock.zig");
+const SpinLock = @import("lock/spinlock.zig");
 
 var panicked: bool = false;
 
 ///lock to avoid interleaving concurrent prinrf's.
-var lock: Spinlock = undefined;
+var lock: SpinLock = undefined;
 var lock_allowed_to_use: bool = true;
 
 // use Zig's fmt as a escape hatch (
@@ -65,5 +65,5 @@ pub fn assert(ok: bool, comptime src: *const SourceLocation) void {
 }
 
 pub fn init() void {
-    Spinlock.init(&lock, "pr");
+    SpinLock.init(&lock, "pr");
 }

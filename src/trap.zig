@@ -1,7 +1,7 @@
 const assert = @import("printf.zig").assert;
 const plic = @import("driver/plic.zig");
 const uart = @import("driver/uart.zig");
-const Spinlock = @import("lock/spinlock.zig");
+const SpinLock = @import("lock/spinlock.zig");
 const memlayout = @import("memlayout.zig");
 const panic = @import("printf.zig").panic;
 const printf = @import("printf.zig").printf;
@@ -19,11 +19,11 @@ extern fn kernelVec() void;
 
 const WhichDev = enum { not_recognize, other_dev, timer_intr };
 
-var ticks_lock: Spinlock = undefined;
+var ticks_lock: SpinLock = undefined;
 var ticks: u32 = 0;
 
 pub fn init() void {
-    Spinlock.init(&ticks_lock, "time");
+    SpinLock.init(&ticks_lock, "time");
 }
 
 ///set up to take exceptions and traps while in the kernel

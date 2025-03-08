@@ -1,10 +1,10 @@
 const Process = @import("../process/process.zig");
-const Spinlock = @import("spinlock.zig");
+const SpinLock = @import("spinlock.zig");
 
 const panic = @import("../printf.zig").panic;
 
 locked: bool,
-lock: Spinlock,
+lock: SpinLock,
 
 name: []const u8,
 pid: i32,
@@ -12,7 +12,7 @@ pid: i32,
 const Self = @This();
 
 pub fn init(self: *Self, comptime name: []const u8) void {
-    Spinlock.init(&self.lock);
+    SpinLock.init(&self.lock);
     self.name = name;
     self.locked = false;
     self.pid = 0;

@@ -1,4 +1,4 @@
-const Spinlock = @import("../lock/spinlock.zig");
+const SpinLock = @import("../lock/spinlock.zig");
 const memlayout = @import("../memlayout.zig");
 const panic = @import("../printf.zig").panic;
 const printf = @import("../printf.zig").printf;
@@ -10,11 +10,11 @@ const Block = struct {
     next: ?*Block,
 };
 
-var lock: Spinlock = undefined;
+var lock: SpinLock = undefined;
 var freelist: ?*Block = null;
 
 pub fn init() void {
-    Spinlock.init(&lock, "kmem");
+    SpinLock.init(&lock, "kmem");
     freeRange(@intFromPtr(end), memlayout.phy_stop);
 }
 

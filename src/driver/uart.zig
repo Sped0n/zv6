@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const Spinlock = @import("../lock/spinlock.zig");
+const SpinLock = @import("../lock/spinlock.zig");
 const memlayout = @import("../memlayout.zig");
 const printf = @import("../printf.zig");
 const Process = @import("../process/process.zig");
@@ -38,7 +38,7 @@ inline fn readReg(offset: u64) u8 {
 
 const tx_buffer_size = 32;
 
-var tx_lock: Spinlock = undefined;
+var tx_lock: SpinLock = undefined;
 var tx_buffer: [tx_buffer_size]u8 = [_]u8{0} ** 32;
 var tx_w: u64 = 0;
 var tx_r: u64 = 0;
@@ -78,7 +78,7 @@ pub fn init() void {
         ier_tx_enable | ier_rx_enable,
     );
 
-    Spinlock.init(&tx_lock, "uart");
+    SpinLock.init(&tx_lock, "uart");
 }
 
 ///add a character to the output buffer and tell the
@@ -108,8 +108,8 @@ pub fn putChar(char: u8) void {
 ///to echo characters. it spins waiting for the uart's
 ///output register to be empty.
 pub fn putCharSync(char: u8) void {
-    Spinlock.pushOff();
-    defer Spinlock.popOff();
+    SpinLock.pushOff();
+    defer SpinLock.popOff();
 
     printf.checkPanicked();
 
