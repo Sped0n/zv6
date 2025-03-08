@@ -1,9 +1,8 @@
 const Spinlock = @import("../lock/spinlock.zig");
 const memlayout = @import("../memlayout.zig");
-const riscv = @import("../riscv.zig");
-
 const panic = @import("../printf.zig").panic;
 const printf = @import("../printf.zig").printf;
+const riscv = @import("../riscv.zig");
 
 const end = @extern(*u8, .{ .name = "end" });
 

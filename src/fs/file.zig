@@ -1,5 +1,5 @@
-const Pipe = @import("pipe.zig");
 const fs = @import("fs.zig");
+const Pipe = @import("pipe.zig");
 
 pub const Inode = struct {
     dev: u32,

@@ -1,6 +1,6 @@
-const uart = @import("uart.zig");
 const Spinlock = @import("../lock/spinlock.zig");
 const Process = @import("../process/process.zig");
+const uart = @import("uart.zig");
 
 const backspace = 0x08;
 const delete = 0x7f;

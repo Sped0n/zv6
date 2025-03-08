@@ -1,14 +1,13 @@
-const riscv = @import("riscv.zig");
-const memlayout = @import("memlayout.zig");
-const Spinlock = @import("lock/spinlock.zig");
-const Process = @import("process/process.zig");
-const Cpu = @import("process/cpu.zig");
-const uart = @import("driver/uart.zig");
-const plic = @import("driver/plic.zig");
-
-const printf = @import("printf.zig").printf;
-const panic = @import("printf.zig").panic;
 const assert = @import("printf.zig").assert;
+const plic = @import("driver/plic.zig");
+const uart = @import("driver/uart.zig");
+const Spinlock = @import("lock/spinlock.zig");
+const memlayout = @import("memlayout.zig");
+const panic = @import("printf.zig").panic;
+const printf = @import("printf.zig").printf;
+const Cpu = @import("process/cpu.zig");
+const Process = @import("process/process.zig");
+const riscv = @import("riscv.zig");
 
 // trampoline.S
 const trampoline = @extern(*u8, .{ .name = "trampoline" });

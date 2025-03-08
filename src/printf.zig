@@ -1,5 +1,5 @@
-const io = @import("std").io;
 const fmt = @import("std").fmt;
+const io = @import("std").io;
 const SourceLocation = @import("std").builtin.SourceLocation;
 
 const console = @import("driver/console.zig");

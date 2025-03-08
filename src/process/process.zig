@@ -1,22 +1,21 @@
 const builtin = @import("std").builtin;
 
-const param = @import("../param.zig");
-const Spinlock = @import("../lock/spinlock.zig");
-const riscv = @import("../riscv.zig");
-const kmem = @import("../memory/kmem.zig");
-const memlayout = @import("../memlayout.zig");
-const vm = @import("../memory/vm.zig");
 const File = @import("../fs/file.zig");
+const Spinlock = @import("../lock/spinlock.zig");
+const memlayout = @import("../memlayout.zig");
+const kmem = @import("../memory/kmem.zig");
+const vm = @import("../memory/vm.zig");
 const misc = @import("../misc.zig");
-const trap = @import("../trap.zig");
-const Cpu = @import("cpu.zig");
-const TrapFrame = @import("trapframe.zig").TrapFrame;
-const Context = @import("context.zig").Context;
-
+const param = @import("../param.zig");
 const assert = @import("../printf.zig").assert;
-const panic = @import("../printf.zig").panic;
 const printf = @import("../printf.zig").printf;
+const panic = @import("../printf.zig").panic;
+const riscv = @import("../riscv.zig");
+const trap = @import("../trap.zig");
+const Context = @import("context.zig").Context;
+const Cpu = @import("cpu.zig");
 const sched = @import("scheduler.zig").sched;
+const TrapFrame = @import("trapframe.zig").TrapFrame;
 
 ///trampoline.S
 const trampoline = @extern(

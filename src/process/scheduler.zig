@@ -1,9 +1,9 @@
+const param = @import("../param.zig");
+const panic = @import("../printf.zig").panic;
+const riscv = @import("../riscv.zig");
+const Context = @import("context.zig").Context;
 const Cpu = @import("cpu.zig");
 const Process = @import("process.zig");
-const riscv = @import("../riscv.zig");
-const param = @import("../param.zig");
-const Context = @import("context.zig").Context;
-const panic = @import("../printf.zig").panic;
 
 extern fn swtch(a: *Context, b: *Context) void;
 

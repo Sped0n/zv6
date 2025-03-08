@@ -1,10 +1,9 @@
-const riscv = @import("../riscv.zig");
-const misc = @import("../misc.zig");
 const memlayout = @import("../memlayout.zig");
 const kmem = @import("../memory/kmem.zig");
-const Process = @import("../process/process.zig");
-
+const misc = @import("../misc.zig");
 const panic = @import("../printf.zig").panic;
+const Process = @import("../process/process.zig");
+const riscv = @import("../riscv.zig");
 
 ///kernel page table
 var kernel_page_table: riscv.PageTable = undefined;
