@@ -65,5 +65,5 @@ pub fn assert(ok: bool, comptime src: *const SourceLocation) void {
 }
 
 pub fn init() void {
-    SpinLock.init(&lock, "pr");
+    lock.init("pr");
 }

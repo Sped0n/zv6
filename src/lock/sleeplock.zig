@@ -12,7 +12,7 @@ pid: i32,
 const Self = @This();
 
 pub fn init(self: *Self, comptime name: []const u8) void {
-    SpinLock.init(&self.lock);
+    self.lock.init();
     self.name = name;
     self.locked = false;
     self.pid = 0;

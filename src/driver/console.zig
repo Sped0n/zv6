@@ -141,7 +141,7 @@ pub fn intr(char: u8) void {
 }
 
 pub fn init() void {
-    SpinLock.init(&lock, "cons");
+    lock.init("cons");
     uart.init();
 
     // TODO: devsw

@@ -14,7 +14,7 @@ var lock: SpinLock = undefined;
 var freelist: ?*Block = null;
 
 pub fn init() void {
-    SpinLock.init(&lock, "kmem");
+    lock.init("kmem");
     freeRange(@intFromPtr(end), memlayout.phy_stop);
 }
 

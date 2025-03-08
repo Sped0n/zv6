@@ -23,7 +23,7 @@ var ticks_lock: SpinLock = undefined;
 var ticks: u32 = 0;
 
 pub fn init() void {
-    SpinLock.init(&ticks_lock, "time");
+    ticks_lock.init("time");
 }
 
 ///set up to take exceptions and traps while in the kernel

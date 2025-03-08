@@ -97,11 +97,11 @@ pub fn mapStacks(kpgtbl: riscv.PageTable) void {
 pub fn init() void {
     // NOTE: don't try to iterate on uninitialized procs
     // see https://github.com/ziglang/zig/issues/13934
-    SpinLock.init(&pid_lock, "nextpid");
-    SpinLock.init(&wait_lock, "wait_lock");
+    pid_lock.init("nextpid");
+    wait_lock.init("wait_lock");
     for (0..param.n_proc) |i| {
         const p = &(procs[i]);
-        SpinLock.init(&(p.lock), "proc");
+        p.lock.init("proc");
         p.state = .unused;
         p.kstack = memlayout.kernelStack(i);
     }

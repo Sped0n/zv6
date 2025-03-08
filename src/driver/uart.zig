@@ -78,7 +78,7 @@ pub fn init() void {
         ier_tx_enable | ier_rx_enable,
     );
 
-    SpinLock.init(&tx_lock, "uart");
+    tx_lock.init("uart");
 }
 
 ///add a character to the output buffer and tell the
