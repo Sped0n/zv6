@@ -5,7 +5,7 @@ const riscv = @import("riscv.zig");
 
 export var stack0 align(16) = [_]u8{0} ** (4096 * param.n_cpu);
 
-export fn start() callconv(.c) noreturn {
+export fn start() callconv(.C) noreturn {
     // set M Previous Privilege mode to Supervisor. for mret.
     var mstatus = riscv.mstatus.read();
     mstatus &= ~(@intFromEnum(riscv.MStatusValue.mpp_machine_or_mask));
