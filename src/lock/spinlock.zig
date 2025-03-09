@@ -3,6 +3,7 @@ const builtin = @import("std").builtin;
 const panic = @import("../printf.zig").panic;
 const Cpu = @import("../process/cpu.zig");
 const riscv = @import("../riscv.zig");
+const misc = @import("../misc.zig");
 
 locked: bool,
 name: []const u8,
@@ -32,6 +33,8 @@ pub fn acquire(self: *Self) void {
         builtin.AtomicOrder.acquire,
     ) != false) {}
 
+    misc.fence();
+
     // Record info about lock acquisition for holding() and debugging.
     self.cpu = Cpu.current();
 }
@@ -41,6 +44,8 @@ pub fn release(self: *Self) void {
     if (!self.holding()) panic(&@src(), "not holding");
 
     self.cpu = null;
+
+    misc.fence();
 
     @atomicStore(
         bool,

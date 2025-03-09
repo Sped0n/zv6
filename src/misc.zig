@@ -1,3 +1,7 @@
+const atomic = @import("std").atomic;
+
+var dummy = atomic.Value(u8).init(0);
+
 ///https://github.com/ziglang/zig/blob/52ba2c3a43a88a4db30cff47f2f3eff8c3d5be19/lib/std/special/c.zig#L115
 pub fn memMove(dest: [*]u8, src: [*]const u8, n: usize) [*]u8 {
     const src_addr = @intFromPtr(src);
@@ -21,4 +25,9 @@ pub fn safeStrCopy(dest: *[16]u8, src: []const u8) void {
     const len = @min(src.len, dest.len - 1);
     @memcpy(dest[0..len], src[0..len]);
     dest[len + 1] = 0;
+}
+
+///https://ziglang.org/download/0.14.0/release-notes.html#toc-Synchronize-External-Operations
+pub fn fence() void {
+    _ = dummy.fetchAdd(0, .seq_cst);
 }
