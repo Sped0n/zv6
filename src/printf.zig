@@ -249,7 +249,7 @@ pub fn checkPanicked() void {
 pub fn assert(ok: bool, comptime src: *const SourceLocation) void {
     if (ok) return;
     lock_allowed_to_use = false;
-    printf("Assertion failed: {s}:{s}", .{ src.file, src.line });
+    printf("Assertion failed: {s}:{d}", .{ src.file, src.line });
     panicked = true; // freeze uart output from other CPUs
     while (true) {}
 }
