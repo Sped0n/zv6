@@ -12,7 +12,7 @@ pid: i32,
 const Self = @This();
 
 pub fn init(self: *Self, comptime name: []const u8) void {
-    self.lock.init();
+    self.lock.init("sleep lock");
     self.name = name;
     self.locked = false;
     self.pid = 0;
