@@ -1,7 +1,7 @@
 const builtin = @import("std").builtin;
 
 const File = @import("../fs/file.zig");
-const SpinLock = @import("../lock/spinlock.zig");
+const SpinLock = @import("../lock/SpinLock.zig");
 const memlayout = @import("../memlayout.zig");
 const kmem = @import("../memory/kmem.zig");
 const vm = @import("../memory/vm.zig");
@@ -12,10 +12,10 @@ const printf = @import("../printf.zig").printf;
 const panic = @import("../printf.zig").panic;
 const riscv = @import("../riscv.zig");
 const trap = @import("../trap.zig");
-const Context = @import("context.zig").Context;
-const Cpu = @import("cpu.zig");
+const Context = @import("Context.zig").Context;
+const Cpu = @import("Cpu.zig");
 const sched = @import("scheduler.zig").sched;
-const TrapFrame = @import("trapframe.zig").TrapFrame;
+const TrapFrame = @import("TrapFrame.zig").TrapFrame;
 
 ///trampoline.S
 const trampoline = @extern(

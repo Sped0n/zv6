@@ -2,7 +2,7 @@ const memlayout = @import("../memlayout.zig");
 const kmem = @import("../memory/kmem.zig");
 const misc = @import("../misc.zig");
 const panic = @import("../printf.zig").panic;
-const Process = @import("../process/process.zig");
+const Process = @import("../process/Process.zig");
 const riscv = @import("../riscv.zig");
 
 ///kernel page table

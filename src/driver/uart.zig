@@ -1,9 +1,9 @@
 const std = @import("std");
 
-const SpinLock = @import("../lock/spinlock.zig");
+const SpinLock = @import("../lock/SpinLock.zig");
 const memlayout = @import("../memlayout.zig");
 const printf = @import("../printf.zig");
-const Process = @import("../process/process.zig");
+const Process = @import("../process/Process.zig");
 const console = @import("console.zig");
 
 // the UART control registers.

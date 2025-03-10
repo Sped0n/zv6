@@ -1,5 +1,5 @@
 const memlayout = @import("../memlayout.zig");
-const Cpu = @import("../process/cpu.zig");
+const Cpu = @import("../process/Cpu.zig");
 
 pub fn init() void {
     // set desired IRQ priorities non-zero (otherwise disabled)

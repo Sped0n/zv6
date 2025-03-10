@@ -2,7 +2,7 @@ const builtin = @import("std").builtin;
 const SourceLocation = builtin.SourceLocation;
 
 const console = @import("driver/console.zig");
-const SpinLock = @import("lock/spinlock.zig");
+const SpinLock = @import("lock/SpinLock.zig");
 
 // the single worst formatted print on this planet -----------------------------
 

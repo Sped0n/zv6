@@ -1,4 +1,4 @@
-const SpinLock = @import("../lock/spinlock.zig");
+const SpinLock = @import("../lock/SpinLock.zig");
 const memlayout = @import("../memlayout.zig");
 const panic = @import("../printf.zig").panic;
 const printf = @import("../printf.zig").printf;

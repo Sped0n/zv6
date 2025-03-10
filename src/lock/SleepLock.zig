@@ -1,7 +1,6 @@
-const Process = @import("../process/process.zig");
-const SpinLock = @import("spinlock.zig");
-
 const panic = @import("../printf.zig").panic;
+const Process = @import("../process/Process.zig");
+const SpinLock = @import("SpinLock.zig");
 
 locked: bool,
 lock: SpinLock,

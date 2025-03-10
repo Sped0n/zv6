@@ -2,7 +2,7 @@ const builtin = @import("std").builtin;
 
 const fence = @import("../misc.zig").fence;
 const panic = @import("../printf.zig").panic;
-const Cpu = @import("../process/cpu.zig");
+const Cpu = @import("../process/Cpu.zig");
 const riscv = @import("../riscv.zig");
 
 locked: bool,

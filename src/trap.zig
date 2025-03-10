@@ -1,12 +1,13 @@
 const assert = @import("printf.zig").assert;
 const plic = @import("driver/plic.zig");
 const uart = @import("driver/uart.zig");
-const SpinLock = @import("lock/spinlock.zig");
+const virtio_disk = @import("driver/virtio_disk.zig");
+const SpinLock = @import("lock/SpinLock.zig");
 const memlayout = @import("memlayout.zig");
 const panic = @import("printf.zig").panic;
 const printf = @import("printf.zig").printf;
-const Cpu = @import("process/cpu.zig");
-const Process = @import("process/process.zig");
+const Cpu = @import("process/Cpu.zig");
+const Process = @import("process/Process.zig");
 const riscv = @import("riscv.zig");
 
 // trampoline.S
@@ -197,7 +198,7 @@ pub fn devIntr() WhichDev {
         if (irq == memlayout.uart0_irq) {
             uart.intr();
         } else if (irq == memlayout.virtio0_irq) {
-            // TODO: virtio_disk_intr()
+            virtio_disk.intr();
         } else if (irq > 0) {
             printf("unexpected interrupt irq={d}\n", .{irq});
         }
