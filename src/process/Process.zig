@@ -12,10 +12,10 @@ const printf = @import("../printf.zig").printf;
 const panic = @import("../printf.zig").panic;
 const riscv = @import("../riscv.zig");
 const trap = @import("../trap.zig");
-const Context = @import("Context.zig").Context;
+const Context = @import("context.zig").Context;
 const Cpu = @import("Cpu.zig");
 const sched = @import("scheduler.zig").sched;
-const TrapFrame = @import("TrapFrame.zig").TrapFrame;
+const TrapFrame = @import("trapframe.zig").TrapFrame;
 
 ///trampoline.S
 const trampoline = @extern(

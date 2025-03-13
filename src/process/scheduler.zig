@@ -1,7 +1,7 @@
 const param = @import("../param.zig");
 const panic = @import("../printf.zig").panic;
 const riscv = @import("../riscv.zig");
-const Context = @import("Context.zig").Context;
+const Context = @import("context.zig").Context;
 const Cpu = @import("Cpu.zig");
 const Process = @import("Process.zig");
 

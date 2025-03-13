@@ -1,6 +1,6 @@
 const param = @import("../param.zig");
 const riscv = @import("../riscv.zig");
-const Context = @import("Context.zig").Context;
+const Context = @import("context.zig").Context;
 const Process = @import("Process.zig");
 
 // Per-CPU state.
