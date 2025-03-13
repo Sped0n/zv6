@@ -36,7 +36,7 @@ pub fn initHart() void {
 ///called from trampoline.S
 pub fn userTrap() void {
     if ((riscv.sstatus.read() & @intFromEnum(riscv.SStatusValue.spp)) != 0) {
-        panic(&@src(), "not from user mode");
+        panic(@src(), "not from user mode", .{});
     }
 
     // send interrupt and exceptions to kernelTrap(),
@@ -44,10 +44,11 @@ pub fn userTrap() void {
     riscv.stvec.write(@intFromPtr(kernelVec));
 
     const proc = Process.current() catch panic(
-        &@src(),
+        @src(),
         "current proc is null",
+        .{},
     );
-    assert(proc.trap_frame != null, &@src());
+    assert(proc.trap_frame != null, @src());
     const trap_frame = proc.trap_frame.?;
 
     // save user program counter
@@ -90,11 +91,12 @@ pub fn userTrap() void {
 ///return to user space
 pub fn userTrapRet() void {
     const proc = Process.current() catch panic(
-        &@src(),
+        @src(),
         "current proc is null",
+        .{},
     );
-    assert(proc.trap_frame != null, &@src());
-    assert(proc.page_table != null, &@src());
+    assert(proc.trap_frame != null, @src());
+    assert(proc.page_table != null, @src());
 
     // we're about to switch the destination of traps from
     // kernelTrap() to userTrap(), so turn off interrupts until
@@ -148,13 +150,13 @@ pub export fn kernelTrap() void {
 
     if ((sstatus & @intFromEnum(riscv.SStatusValue.spp)) == 0) {
         panic(
-            @src().fn_name,
+            @src(),
             "not from supervisor mode",
             .{},
         );
     }
     if (riscv.intrGet()) {
-        panic(@src().fn_name, "interrupt enabled", .{});
+        panic(@src(), "interrupt enabled", .{});
     }
 
     const which_dev = devIntr();

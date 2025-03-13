@@ -23,7 +23,7 @@ pub fn init(self: *Self, comptime name: []const u8) void {
 ///Interrupts must be off.
 pub fn acquire(self: *Self) void {
     pushOff();
-    if (self.holding()) panic(&@src(), "acquire while holding");
+    if (self.holding()) panic(@src(), "acquire while holding", .{});
 
     while (@atomicRmw(
         bool,
@@ -41,7 +41,7 @@ pub fn acquire(self: *Self) void {
 
 ///Release the lock.
 pub fn release(self: *Self) void {
-    if (!self.holding()) panic(&@src(), "not holding");
+    if (!self.holding()) panic(@src(), "not holding", .{});
 
     self.cpu = null;
 
@@ -81,10 +81,10 @@ pub fn pushOff() void {
 pub fn popOff() void {
     const c = Cpu.current();
     if (riscv.intrGet()) {
-        panic(&@src(), "interruptible");
+        panic(@src(), "interruptible", .{});
     }
     if (c.noff < 1) {
-        panic(&@src(), "noff not matched");
+        panic(@src(), "noff not matched", .{});
     }
     c.noff -= 1;
     if (c.noff == 0 and c.intr_enable) riscv.intrOn();

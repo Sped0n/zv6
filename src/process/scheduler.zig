@@ -62,19 +62,19 @@ pub fn scheduler() void {
 ///there's no process.
 pub fn sched() void {
     const proc = Process.current() catch panic(
-        @src().fn_name,
+        @src(),
         "current proc is null",
         .{},
     );
 
     if (!proc.lock.holding())
-        panic(@src().fn_name, "proc lock not holding", .{});
+        panic(@src(), "proc lock not holding", .{});
     if (Cpu.current().noff != 1)
-        panic(@src().fn_name, "cpu noff({d}) is not 1", .{Cpu.current().noff});
+        panic(@src(), "cpu noff({d}) is not 1", .{Cpu.current().noff});
     if (proc.state == .running)
-        panic(@src().fn_name, "current proc is running", .{});
+        panic(@src(), "current proc is running", .{});
     if (riscv.intrGet())
-        panic(@src().fn_name, "interruptible", .{});
+        panic(@src(), "interruptible", .{});
 
     const intr_enable = Cpu.current().intr_enable;
     swtch(&proc.context, &Cpu.current().context);

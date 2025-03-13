@@ -127,7 +127,7 @@ pub fn walk(
     alloc: bool,
 ) ?*riscv.Pte {
     if (virt_addr > riscv.max_va) panic(
-        @src().fn_name,
+        @src(),
         "va({x}) greater than maxva",
         .{virt_addr},
     );
@@ -151,7 +151,7 @@ pub fn walk(
             if (kmem.alloc()) |page_ptr| {
                 local_page_table = @alignCast(@ptrCast(page_ptr));
             } else {
-                panic(@src().fn_name, "kalloc failed", .{});
+                panic(@src(), "kalloc failed", .{});
                 return null;
             }
 
@@ -207,7 +207,7 @@ pub fn kvmMap(
         size,
         phy_addr,
         permission,
-    )) panic(@src().fn_name, "mapPages failed", .{});
+    )) panic(@src(), "mapPages failed", .{});
 }
 
 ///Create PTEs for virtual addresses starting at va that refer to
@@ -223,19 +223,19 @@ pub fn mapPages(
     permission: u64,
 ) bool {
     if ((virt_addr % riscv.pg_size) != 0) panic(
-        @src().fn_name,
+        @src(),
         "va({x}) not aligned",
         .{virt_addr},
     );
 
     if ((size % riscv.pg_size) != 0) panic(
-        @src().fn_name,
+        @src(),
         "size({d}) not aligned",
         .{size},
     );
 
     if (size == 0) panic(
-        @src().fn_name,
+        @src(),
         "size is 0",
         .{},
     );
@@ -254,7 +254,11 @@ pub fn mapPages(
             true,
         ) orelse return false;
         if (pte_ptr.* & @intFromEnum(riscv.PteFlag.v) != 0) {
-            panic(@src().fn_name, "remap", .{});
+            panic(
+                @src(),
+                "remap, current pte flag is {x}",
+                .{riscv.pteFlags(pte_ptr.*)},
+            );
         }
         pte_ptr.* = riscv.pa2Pte(
             local_phy_addr,
@@ -275,7 +279,11 @@ pub fn uvmUnmap(
     npages: u64,
     free: bool,
 ) void {
-    if (virt_addr % riscv.pg_size != 0) panic(&@src(), "not aligned");
+    if (virt_addr % riscv.pg_size != 0) panic(
+        @src(),
+        "va({x}) not aligned",
+        .{virt_addr},
+    );
 
     var local_virt_addr = virt_addr;
     const last = virt_addr + npages * riscv.pg_size;
@@ -289,10 +297,10 @@ pub fn uvmUnmap(
 
             if ((pte & @intFromEnum(
                 riscv.PteFlag.v,
-            )) == 0) panic(&@src(), "not mapped");
+            )) == 0) panic(@src(), "not mapped", {});
             if (riscv.pteFlags(pte) == @intFromEnum(
                 riscv.PteFlag.v,
-            )) panic(&@src(), "not a leaf");
+            )) panic(@src(), "not a leaf", .{});
 
             if (free) {
                 const phy_addr = riscv.pte2Pa(pte);
@@ -300,7 +308,7 @@ pub fn uvmUnmap(
             }
             pte_ptr.* = 0;
         } else {
-            panic(&@src(), "uvmUnmap: walk");
+            panic(@src(), "walk failed", .{});
         }
     }
 }
@@ -322,10 +330,14 @@ pub fn uvmCreate() ?riscv.PageTable {
 ///for the very first process.
 ///sz must be less than a page.
 pub fn uvmFirst(page_table: riscv.PageTable, src: []const u8) void {
-    if (src.len > riscv.pg_size) panic(&@src(), "more than one page");
+    if (src.len > riscv.pg_size) panic(
+        @src(),
+        "more than one page({d})",
+        .{src.len},
+    );
 
     const mem_ptr = kmem.alloc() orelse {
-        panic("uvmfirst: kalloc failed");
+        panic(@src(), "kalloc failed", .{});
         return;
     };
 
@@ -345,7 +357,7 @@ pub fn uvmFirst(page_table: riscv.PageTable, src: []const u8) void {
         permission,
     )) {
         kmem.free(mem_ptr);
-        panic(&@src(), "mapPages failed");
+        panic(@src(), "mapPages failed", .{});
     } else {
         _ = misc.memMove(mem, src, src.len);
     }
@@ -436,7 +448,11 @@ pub fn freeWalk(page_table: riscv.PageTable) void {
             freeWalk(child);
             page_table[i] = 0;
         } else if (pte & v_permission != 0) {
-            panic("freewalk: leaf");
+            panic(
+                @src(),
+                "leaf, current pte flag is {x}",
+                .{riscv.pteFlags(pte)},
+            );
         }
     }
     kmem.free(@ptrCast(page_table));
@@ -469,11 +485,13 @@ pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) bool {
             addr,
             false,
         );
-        if (pte_ptr == null) panic("uvmCopy: pte should exist");
+        if (pte_ptr == null) panic(@src(), "pte should exist", .{});
 
         const pte = pte_ptr.?.*;
         if (pte & @intFromEnum(riscv.PteFlag.v)) panic(
-            "uvmCopy: page not present",
+            @src(),
+            "page not present, current pte flag is {x}",
+            .{riscv.pteFlags(pte)},
         );
         const phy_addr = riscv.pte2Pa(pte);
         const flags = riscv.pteFlags(pte);
@@ -526,7 +544,7 @@ pub fn uvmClear(page_table: riscv.PageTable, virt_addr: u64) void {
         virt_addr,
         false,
     );
-    if (pte_ptr == null) panic("panic: uvmclear");
+    if (pte_ptr == null) panic(@src(), "walk failed", .{});
     pte_ptr.?.* &= ~@intFromPtr(riscv.PteFlag.u);
 }
 

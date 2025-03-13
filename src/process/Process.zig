@@ -92,7 +92,7 @@ pub fn mapStacks(kpgtbl: riscv.PageTable) void {
             );
         } else {
             panic(
-                @src().fn_name,
+                @src(),
                 "kalloc failed",
                 .{},
             );
@@ -214,7 +214,7 @@ fn free(self: *Self) void {
 ///Create a user page table for a given process, with no user memory,
 ///but with trampoline and trapframe pages.
 pub fn createPageTable(self: *Self) ?riscv.PageTable {
-    assert(self.trap_frame != null, &@src());
+    assert(self.trap_frame != null, @src());
 
     // An empty page table.
     const page_table = vm.uvmCreate() orelse return null;
@@ -262,12 +262,12 @@ pub fn freePageTable(page_table: riscv.PageTable, size: u64) void {
 ///Return 0 on success, -1 on failure.
 pub fn growCurrent(n: i32) bool {
     const proc = current() catch panic(
-        @src().fn_name,
+        @src(),
         "current proc is null",
         .{},
     );
 
-    assert(proc.page_table != null, &@src());
+    assert(proc.page_table != null, @src());
 
     var size = proc.size;
     if (n > 0) {
@@ -293,13 +293,13 @@ pub fn growCurrent(n: i32) bool {
 ///Sets up child kernel stack to return as if from fork() system call.
 pub fn fork() ?u32 {
     const proc = current() catch panic(
-        @src().fn_name,
+        @src(),
         "current proc is null",
         .{},
     );
 
-    assert(proc.page_table != null, &@src());
-    assert(proc.trap_frame != null, &@src());
+    assert(proc.page_table != null, @src());
+    assert(proc.trap_frame != null, @src());
 
     const new_proc = create() orelse return -1;
 
@@ -353,13 +353,13 @@ pub fn reParent(self: *Self) void {
 ///until its parent calls wait().
 pub fn exit(status: i32) void {
     const proc = current() catch panic(
-        @src().fn_name,
+        @src(),
         "current proc is null",
         .{},
     );
-    assert(proc.parent != null, &@src());
+    assert(proc.parent != null, @src());
 
-    if (proc == init_proc) panic(@src().fn_name, "init exiting", .{});
+    if (proc == init_proc) panic(@src(), "init exiting", .{});
 
     // TODO: close all open files
 
@@ -383,14 +383,14 @@ pub fn exit(status: i32) void {
 
     // Jump into the scheduler, never to return.
     sched();
-    panic(@src().fn_name, "zombie exit", .{});
+    panic(@src(), "zombie exit", .{});
 }
 
 // Wait for a child process to exit and return its pid.
 // Return null if this process has no children.
 pub fn wait(addr: u64) i32 {
     const curr_proc = current() catch panic(
-        @src().fn_name,
+        @src(),
         "current proc is null",
         .{},
     );
@@ -436,7 +436,7 @@ pub fn wait(addr: u64) i32 {
 ///Give up the CPU for one scheduling round.
 pub fn yield() void {
     const proc = current() catch panic(
-        @src().fn_name,
+        @src(),
         "current proc is null",
         .{},
     );
@@ -456,7 +456,7 @@ pub fn forkRet() void {
     };
 
     const proc = current() catch panic(
-        @src().fn_name,
+        @src(),
         "current proc is null",
         .{},
     );
@@ -487,8 +487,9 @@ pub fn forkRet() void {
 ///Reacquires lock when awakened.
 pub fn sleep(chan_addr: u64, lock: *SpinLock) void {
     const proc = current() catch panic(
-        &@src(),
+        @src(),
         "current proc is null",
+        .{},
     );
 
     proc.lock.acquire(); // DOC: sleeplock 1
@@ -567,12 +568,13 @@ pub fn eitherCopyOut(
     len: u64,
 ) bool {
     const proc = current() catch panic(
-        &@src(),
+        @src(),
         "current proc is null",
+        .{},
     );
 
     if (is_user_dest) {
-        assert(proc.page_table != null, &@src());
+        assert(proc.page_table != null, @src());
         return vm.copyOut(proc.page_table.?, dest_addr, src, len);
     } else {
         misc.memMove(@ptrFromInt(dest_addr), src, len);
@@ -585,8 +587,9 @@ pub fn eitherCopyOut(
 ///Returns true on success, false on error.
 pub fn eitherCopyIn(dest: [*]u8, is_user_src: bool, src_addr: u64, len: u64) bool {
     const proc = current() catch panic(
-        &@src(),
+        @src(),
         "current proc is null",
+        .{},
     );
 
     if (is_user_src) {

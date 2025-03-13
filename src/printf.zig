@@ -231,13 +231,13 @@ pub fn printf(comptime format: []const u8, args: anytype) void {
 }
 
 pub fn panic(
-    comptime fn_name: ?[]const u8,
+    comptime src: ?SourceLocation,
     comptime format: []const u8,
     args: anytype,
 ) noreturn {
     lock_allowed_to_use = false;
-    if (fn_name) |name| {
-        printf("Panic from <{s}>: ", .{name});
+    if (src) |s| {
+        printf("Panic from <{s}[{s}]>: ", .{ s.fn_name, s.file });
     } else {
         printf("Panic: ", .{});
     }
@@ -253,10 +253,10 @@ pub fn checkPanicked() void {
     }
 }
 
-pub fn assert(ok: bool, comptime src: *const SourceLocation) void {
+pub fn assert(ok: bool, comptime src: SourceLocation) void {
     if (ok) return;
     lock_allowed_to_use = false;
-    printf("Assertion failed: {s}:{d}", .{ src.file, src.line });
+    printf("Assertion failed at {s}:{d}", .{ src.file, src.line });
     panicked = true; // freeze uart output from other CPUs
     while (true) {}
 }

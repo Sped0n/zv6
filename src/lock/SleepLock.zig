@@ -26,7 +26,11 @@ pub fn acquire(self: *Self) void {
         &self.lock,
     );
     self.locked = true;
-    const proc = Process.current() catch panic("current proc is null");
+    const proc = Process.current() catch panic(
+        @src(),
+        "current proc is null",
+        .{},
+    );
     self.pid = proc.pid;
 }
 
@@ -43,6 +47,10 @@ pub fn holding(self: *Self) bool {
     self.lock.acquire();
     defer self.lock.release();
 
-    const proc = Process.current() catch panic("current proc is null");
+    const proc = Process.current() catch panic(
+        @src(),
+        "current proc is null",
+        .{},
+    );
     return self.locked and self.pid == proc.pid;
 }
