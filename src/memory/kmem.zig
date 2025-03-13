@@ -36,7 +36,7 @@ pub fn free(page_ptr: *[4096]u8) void {
 
     // not aligned.
     if (page_addr % riscv.pg_size != 0) {
-        panic(&@src(), "not aligned");
+        panic(@src().fn_name, "not aligned", .{});
         return;
     }
 
@@ -44,7 +44,7 @@ pub fn free(page_ptr: *[4096]u8) void {
         u64,
         @intFromPtr(end),
     ) or page_addr >= memlayout.phy_stop) {
-        panic(&@src(), "out of range");
+        panic(@src().fn_name, "out of range", .{});
         return;
     }
 

@@ -147,10 +147,14 @@ pub export fn kernelTrap() void {
     const scause = riscv.scause.read();
 
     if ((sstatus & @intFromEnum(riscv.SStatusValue.spp)) == 0) {
-        panic(&@src(), "not from supervisor mode");
+        panic(
+            @src().fn_name,
+            "not from supervisor mode",
+            .{},
+        );
     }
     if (riscv.intrGet()) {
-        panic(&@src(), "interrupt enabled");
+        panic(@src().fn_name, "interrupt enabled", .{});
     }
 
     const which_dev = devIntr();

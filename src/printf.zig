@@ -231,11 +231,18 @@ pub fn printf(comptime format: []const u8, args: anytype) void {
 }
 
 pub fn panic(
-    comptime src: *const SourceLocation,
-    comptime info: []const u8,
+    comptime fn_name: ?[]const u8,
+    comptime format: []const u8,
+    args: anytype,
 ) noreturn {
     lock_allowed_to_use = false;
-    printf("Panic from <{s}>: {s}\n", .{ src.fn_name, info });
+    if (fn_name) |name| {
+        printf("Panic from <{s}>: ", .{name});
+    } else {
+        printf("Panic: ", .{});
+    }
+    printf(format, args);
+    printf("\n", .{});
     panicked = true; // freeze uart output from other CPUs
     while (true) {}
 }

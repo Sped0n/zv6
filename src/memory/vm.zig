@@ -126,7 +126,11 @@ pub fn walk(
     virt_addr: u64,
     alloc: bool,
 ) ?*riscv.Pte {
-    if (virt_addr > riscv.max_va) panic(&@src(), "va greater than maxva");
+    if (virt_addr > riscv.max_va) panic(
+        @src().fn_name,
+        "va({x}) greater than maxva",
+        .{virt_addr},
+    );
 
     var local_page_table = page_table;
 
@@ -147,7 +151,7 @@ pub fn walk(
             if (kmem.alloc()) |page_ptr| {
                 local_page_table = @alignCast(@ptrCast(page_ptr));
             } else {
-                panic(&@src(), "kalloc failed");
+                panic(@src().fn_name, "kalloc failed", .{});
                 return null;
             }
 
@@ -203,7 +207,7 @@ pub fn kvmMap(
         size,
         phy_addr,
         permission,
-    )) panic(&@src(), "mapPages failed");
+    )) panic(@src().fn_name, "mapPages failed", .{});
 }
 
 ///Create PTEs for virtual addresses starting at va that refer to
@@ -218,11 +222,23 @@ pub fn mapPages(
     phy_addr: u64,
     permission: u64,
 ) bool {
-    if ((virt_addr % riscv.pg_size) != 0) panic(&@src(), "va not aligned");
+    if ((virt_addr % riscv.pg_size) != 0) panic(
+        @src().fn_name,
+        "va({x}) not aligned",
+        .{virt_addr},
+    );
 
-    if ((size % riscv.pg_size) != 0) panic(&@src(), "size not aligned");
+    if ((size % riscv.pg_size) != 0) panic(
+        @src().fn_name,
+        "size({d}) not aligned",
+        .{size},
+    );
 
-    if (size == 0) panic(&@src(), "size is 0");
+    if (size == 0) panic(
+        @src().fn_name,
+        "size is 0",
+        .{},
+    );
 
     var local_virt_addr: u64 = virt_addr;
     var local_phy_addr: u64 = phy_addr;
@@ -238,7 +254,7 @@ pub fn mapPages(
             true,
         ) orelse return false;
         if (pte_ptr.* & @intFromEnum(riscv.PteFlag.v) != 0) {
-            panic(&@src(), "remap");
+            panic(@src().fn_name, "remap", .{});
         }
         pte_ptr.* = riscv.pa2Pte(
             local_phy_addr,

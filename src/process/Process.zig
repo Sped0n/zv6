@@ -1,6 +1,7 @@
 const builtin = @import("std").builtin;
 
 const File = @import("../fs/file.zig");
+const Inode = @import("../fs/Inode.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
 const memlayout = @import("../memlayout.zig");
 const kmem = @import("../memory/kmem.zig");
@@ -51,7 +52,7 @@ page_table: ?riscv.PageTable, // User page table
 trap_frame: ?*TrapFrame, // data page for trampoline.S
 context: Context, // swtch() here to run process
 ofile: *[param.n_ofile]File, // Open files
-cwd: ?*File.Inode, // Current directory
+cwd: ?*Inode, // Current directory
 name: [16]u8, // Process name (debugging)
 
 pub var procs: [param.n_proc]Self = undefined;
@@ -76,20 +77,26 @@ pub fn mapStacks(kpgtbl: riscv.PageTable) void {
     // NOTE: don't try to iterate on uninitialized procs
     // see https://github.com/ziglang/zig/issues/13934
     for (0..param.n_proc) |i| {
-        const phy_addr = kmem.alloc();
-        if (phy_addr == null) panic(&@src(), "kalloc failed");
-        const virt_addr = memlayout.kernelStack(i);
-        vm.kvmMap(
-            kpgtbl,
-            virt_addr,
-            @intFromPtr(phy_addr.?),
-            riscv.pg_size,
-            @intFromEnum(
-                riscv.PteFlag.r,
-            ) | @intFromEnum(
-                riscv.PteFlag.w,
-            ),
-        );
+        if (kmem.alloc()) |phy_addr| {
+            const virt_addr = memlayout.kernelStack(i);
+            vm.kvmMap(
+                kpgtbl,
+                virt_addr,
+                @intFromPtr(phy_addr),
+                riscv.pg_size,
+                @intFromEnum(
+                    riscv.PteFlag.r,
+                ) | @intFromEnum(
+                    riscv.PteFlag.w,
+                ),
+            );
+        } else {
+            panic(
+                @src().fn_name,
+                "kalloc failed",
+                .{},
+            );
+        }
     }
 }
 
@@ -255,8 +262,9 @@ pub fn freePageTable(page_table: riscv.PageTable, size: u64) void {
 ///Return 0 on success, -1 on failure.
 pub fn growCurrent(n: i32) bool {
     const proc = current() catch panic(
-        &@src(),
+        @src().fn_name,
         "current proc is null",
+        .{},
     );
 
     assert(proc.page_table != null, &@src());
@@ -285,8 +293,9 @@ pub fn growCurrent(n: i32) bool {
 ///Sets up child kernel stack to return as if from fork() system call.
 pub fn fork() ?u32 {
     const proc = current() catch panic(
-        &@src(),
+        @src().fn_name,
         "current proc is null",
+        .{},
     );
 
     assert(proc.page_table != null, &@src());
@@ -344,12 +353,13 @@ pub fn reParent(self: *Self) void {
 ///until its parent calls wait().
 pub fn exit(status: i32) void {
     const proc = current() catch panic(
-        &@src(),
+        @src().fn_name,
         "current proc is null",
+        .{},
     );
     assert(proc.parent != null, &@src());
 
-    if (proc == init_proc) panic(&@src(), "init exiting");
+    if (proc == init_proc) panic(@src().fn_name, "init exiting", .{});
 
     // TODO: close all open files
 
@@ -373,15 +383,16 @@ pub fn exit(status: i32) void {
 
     // Jump into the scheduler, never to return.
     sched();
-    panic(&@src(), "zombie exit");
+    panic(@src().fn_name, "zombie exit", .{});
 }
 
 // Wait for a child process to exit and return its pid.
 // Return null if this process has no children.
 pub fn wait(addr: u64) i32 {
     const curr_proc = current() catch panic(
-        &@src(),
+        @src().fn_name,
         "current proc is null",
+        .{},
     );
 
     wait_lock.acquire();
@@ -425,8 +436,9 @@ pub fn wait(addr: u64) i32 {
 ///Give up the CPU for one scheduling round.
 pub fn yield() void {
     const proc = current() catch panic(
-        &@src(),
+        @src().fn_name,
         "current proc is null",
+        .{},
     );
 
     proc.lock.acquire();
@@ -444,8 +456,9 @@ pub fn forkRet() void {
     };
 
     const proc = current() catch panic(
-        &@src(),
+        @src().fn_name,
         "current proc is null",
+        .{},
     );
 
     // Still holding p->lock from scheduler.
@@ -546,7 +559,7 @@ pub fn isKilled(self: *Self) bool {
 
 ///Copy to either a user address, or kernel address,
 ///depending on usr_dst.
-///Returns 0 on success, -1 on error.
+///Returns true on success, false on error.
 pub fn eitherCopyOut(
     is_user_dest: bool,
     dest_addr: u64,
@@ -569,7 +582,7 @@ pub fn eitherCopyOut(
 
 ///Copy from either a user address, or kernel address,
 ///depending on usr_src.
-///Returns 0 on success, -1 on error.
+///Returns true on success, false on error.
 pub fn eitherCopyIn(dest: [*]u8, is_user_src: bool, src_addr: u64, len: u64) bool {
     const proc = current() catch panic(
         &@src(),
