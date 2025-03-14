@@ -40,7 +40,7 @@ state: ProcState, // Process state
 chan_addr: u64, // If non-zero, sleeping on chan
 killed: bool, // If non-zero, have been killed
 exit_state: i32, // Exit status to be returned to parent's wait
-pid: i32, // Process ID
+pid: u32, // Process ID
 
 // wait_lock must be held when using this:
 parent: ?*Self, // Parent process
@@ -49,17 +49,33 @@ parent: ?*Self, // Parent process
 kstack: u64, // Virtual address of kernel stack
 size: u64, // Size of process memory (bytes)
 page_table: ?riscv.PageTable, // User page table
-trap_frame: ?*TrapFrame, // data page for trampoline.S
+trap_frame: *TrapFrame, // data page for trampoline.S
 context: Context, // swtch() here to run process
 ofile: *[param.n_ofile]File, // Open files
 cwd: ?*Inode, // Current directory
 name: [16]u8, // Process name (debugging)
 
-pub var procs: [param.n_proc]Self = undefined;
+pub var procs: [param.n_proc]Self = [_]Self{Self{
+    .lock = undefined,
+    .state = .unused,
+    .chan_addr = 0,
+    .killed = false,
+    .exit_state = 0,
+    .pid = 0,
+    .parent = null,
+    .kstack = 0,
+    .size = 0,
+    .page_table = null,
+    .trap_frame = undefined,
+    .context = undefined,
+    .ofile = undefined,
+    .cwd = null,
+    .name = [_]u8{0} ** 16,
+}} ** param.n_proc;
 
 var init_proc: *Self = undefined;
 
-var nextpid: i32 = 1;
+var nextpid: u32 = 1;
 var pid_lock: SpinLock = undefined;
 
 ///helps ensure that wakeups of wait()ing
@@ -70,33 +86,32 @@ var wait_lock: SpinLock = undefined;
 
 const Self = @This();
 
+pub const Error = error{
+    CurrentProcIsNull,
+    NoProcAvailable,
+    NoChildAvailable,
+};
+
 ///Allocate a page for each process's kernel stack.
 ///Map it high in memory, followed by an invalid
 ///guard page.
-pub fn mapStacks(kpgtbl: riscv.PageTable) void {
+pub fn mapStacks(kpgtbl: riscv.PageTable) !void {
     // NOTE: don't try to iterate on uninitialized procs
     // see https://github.com/ziglang/zig/issues/13934
     for (0..param.n_proc) |i| {
-        if (kmem.alloc()) |phy_addr| {
-            const virt_addr = memlayout.kernelStack(i);
-            vm.kvmMap(
-                kpgtbl,
-                virt_addr,
-                @intFromPtr(phy_addr),
-                riscv.pg_size,
-                @intFromEnum(
-                    riscv.PteFlag.r,
-                ) | @intFromEnum(
-                    riscv.PteFlag.w,
-                ),
-            );
-        } else {
-            panic(
-                @src(),
-                "kalloc failed",
-                .{},
-            );
-        }
+        const page_ptr = try kmem.alloc();
+        const virt_addr = memlayout.kernelStack(i);
+        vm.kvmMap(
+            kpgtbl,
+            virt_addr,
+            @intFromPtr(page_ptr),
+            riscv.pg_size,
+            @intFromEnum(
+                riscv.PteFlag.r,
+            ) | @intFromEnum(
+                riscv.PteFlag.w,
+            ),
+        );
     }
 }
 
@@ -123,9 +138,10 @@ pub fn current() !*Self {
     if (c.proc) |p| {
         return p;
     } else {
-        return error.CurrentProcIsNull;
+        return Error.CurrentProcIsNull;
     }
 }
+
 ///Return the current struct proc *, or null if none.
 pub fn currentOrNull() ?*Self {
     SpinLock.pushOff();
@@ -135,7 +151,7 @@ pub fn currentOrNull() ?*Self {
     return c.proc;
 }
 
-pub fn allocPid() i32 {
+pub fn allocPid() u32 {
     pid_lock.acquire();
     defer pid_lock.release();
 
@@ -144,15 +160,11 @@ pub fn allocPid() i32 {
     return pid;
 }
 
-fn create() ?*Self {
-    var success = false;
+fn create() !*Self {
     for (0..param.n_proc) |i| {
         const proc = &procs[i];
 
         proc.lock.acquire();
-        defer {
-            if (!success) proc.lock.release();
-        }
 
         if (proc.state != .unused) continue;
 
@@ -160,29 +172,29 @@ fn create() ?*Self {
         proc.state = .used;
 
         // Allocate a trapframe page.
-        if (kmem.alloc()) |page_ptr| {
-            proc.trap_frame = @ptrCast(page_ptr);
-        } else {
-            free(proc);
-            return null;
-        }
+        proc.trap_frame = @ptrCast(kmem.alloc() catch |e| {
+            proc.free();
+            proc.lock.release();
+            return e;
+        });
 
         // An empty user page table.
-        if (createPageTable(proc)) |page_table| {
-            proc.page_table = page_table;
-        } else {
-            free(proc);
-            return null;
-        }
+        proc.page_table = createPageTable(proc) catch |e| {
+            proc.free();
+            proc.lock.release();
+            return e;
+        };
 
         // Set up new context to start executing at forkret,
         // which returns to user space.
-        const mem = @as([*]u8, @ptrCast(&proc.context))[0..@sizeOf(proc.context)];
+        const mem = @as(
+            [*]u8,
+            @ptrCast(&proc.context),
+        )[0..@sizeOf(proc.context)];
         @memset(mem, 0);
-        // TODO: forkret
+        proc.context.ra = @intFromPtr(&forkRet);
         proc.context.sp = proc.kstack + riscv.pg_size;
 
-        success = true;
         return proc;
     }
 
@@ -213,39 +225,39 @@ fn free(self: *Self) void {
 
 ///Create a user page table for a given process, with no user memory,
 ///but with trampoline and trapframe pages.
-pub fn createPageTable(self: *Self) ?riscv.PageTable {
+pub fn createPageTable(self: *Self) !riscv.PageTable {
     assert(self.trap_frame != null, @src());
 
     // An empty page table.
-    const page_table = vm.uvmCreate() orelse return null;
+    const page_table = try vm.uvmCreate();
 
     // map the trampoline code (for system call return)
     // at the highest user virtual address.
     // only the supervisor uses it, on the way
     // to/from user space, so not PTE_U.
-    if (!vm.mapPages(
+    vm.mapPages(
         page_table,
         memlayout.trampoline,
         riscv.pg_size,
         @intFromPtr(trampoline),
         @intFromEnum(riscv.PteFlag.r) | @intFromEnum(riscv.PteFlag.x),
-    )) {
+    ) catch |e| {
         vm.uvmFree(page_table, 0);
-        return null;
-    }
+        return e;
+    };
 
     // map the trapframe page just below the trampoline page, for
     // trampoline.S.
-    if (!vm.mapPages(
+    vm.mapPages(
         page_table,
         memlayout.trap_frame,
         riscv.pg_size,
         @ptrCast(self.trap_frame.?),
         @intFromEnum(riscv.PteFlag.r) | @intFromEnum(riscv.PteFlag.w),
-    )) {
+    ) catch |e| {
         vm.uvmFree(page_table, 0);
-        return null;
-    }
+        return e;
+    };
 
     return page_table;
 }
@@ -259,8 +271,7 @@ pub fn freePageTable(page_table: riscv.PageTable, size: u64) void {
 }
 
 ///Grow or shrink user memory by n bytes.
-///Return 0 on success, -1 on failure.
-pub fn growCurrent(n: i32) bool {
+pub fn growCurrent(n: i32) !void {
     const proc = current() catch panic(
         @src(),
         "current proc is null",
@@ -271,12 +282,12 @@ pub fn growCurrent(n: i32) bool {
 
     var size = proc.size;
     if (n > 0) {
-        size = vm.uvmMalloc(
+        size = try vm.uvmMalloc(
             proc.page_table.?,
             size,
             size + @abs(n),
             @intFromEnum(riscv.PteFlag.w),
-        ) orelse return false;
+        );
     } else if (n < 0) {
         size = vm.uvmDealloc(
             proc.page_table.?,
@@ -286,12 +297,11 @@ pub fn growCurrent(n: i32) bool {
     }
 
     proc.size = size;
-    return true;
 }
 
 ///Create a new process, copying the parent.
 ///Sets up child kernel stack to return as if from fork() system call.
-pub fn fork() ?u32 {
+pub fn fork() !u32 {
     const proc = current() catch panic(
         @src(),
         "current proc is null",
@@ -299,22 +309,25 @@ pub fn fork() ?u32 {
     );
 
     assert(proc.page_table != null, @src());
-    assert(proc.trap_frame != null, @src());
 
-    const new_proc = create() orelse return -1;
+    const new_proc = try create();
 
-    if (!vm.uvmCopy(proc.page_table.?, new_proc.page_table.?, proc.size)) {
+    vm.uvmCopy(
+        proc.page_table.?,
+        new_proc.page_table.?,
+        proc.size,
+    ) catch |e| {
         free(new_proc);
         new_proc.lock.release();
-        return null;
-    }
+        return e;
+    };
     new_proc.size = proc.size;
 
     // copy saved user register.
-    new_proc.trap_frame.?.* = proc.trap_frame.?.*;
+    new_proc.trap_frame.* = proc.trap_frame.*;
 
     // Cause fork to return 0 in the child.
-    new_proc.trap_frame.?.a0 = 0;
+    new_proc.trap_frame.a0 = 0;
 
     // TODO: ofile
     // TODO: cwd
@@ -388,7 +401,7 @@ pub fn exit(status: i32) void {
 
 // Wait for a child process to exit and return its pid.
 // Return null if this process has no children.
-pub fn wait(addr: u64) i32 {
+pub fn wait(addr: u64) !i32 {
     const curr_proc = current() catch panic(
         @src(),
         "current proc is null",
@@ -414,22 +427,26 @@ pub fn wait(addr: u64) i32 {
 
             // Found one.
             const pid = proc.pid;
-            if (addr != 0 and vm.copyOut(
-                curr_proc.page_table,
-                addr,
-                @ptrCast(&proc.xstate),
-                @sizeOf(proc.xstate),
-            ) == false) {
-                return -1;
+            if (addr != 0) {
+                try vm.copyOut(
+                    curr_proc.page_table,
+                    addr,
+                    @ptrCast(&proc.xstate),
+                    @sizeOf(proc.xstate),
+                );
             }
-            free(proc);
+
+            proc.free();
             return pid;
         }
 
         // No point waiting if we don't have any children.
-        if (!have_kids or isKilled(curr_proc)) {
-            return -1;
+        if (!have_kids or curr_proc.isKilled()) {
+            return Error.NoChildAvailable;
         }
+
+        // Wait for a child to exit
+        sleep(@intFromPtr(curr_proc), &wait_lock);
     }
 }
 
@@ -526,8 +543,8 @@ pub fn wakeUp(chan_addr: u64) void {
 
 ///Kill the process with the given pid.
 ///The victim won't exit until it tries to return
-///to user space (see usertrap() in trap.c).
-pub fn kill(pid: i32) bool {
+///to user space (see userTrap() in trap.zig).
+pub fn kill(pid: u32) bool {
     for (0..param.n_proc) |i| {
         const proc = procs[i];
 
@@ -566,7 +583,7 @@ pub fn eitherCopyOut(
     dest_addr: u64,
     src: [*]const u8,
     len: u64,
-) bool {
+) !void {
     const proc = current() catch panic(
         @src(),
         "current proc is null",
@@ -575,10 +592,14 @@ pub fn eitherCopyOut(
 
     if (is_user_dest) {
         assert(proc.page_table != null, @src());
-        return vm.copyOut(proc.page_table.?, dest_addr, src, len);
+        try vm.copyOut(
+            proc.page_table.?,
+            dest_addr,
+            src,
+            len,
+        );
     } else {
         misc.memMove(@ptrFromInt(dest_addr), src, len);
-        return true;
     }
 }
 
@@ -594,10 +615,14 @@ pub fn eitherCopyIn(dest: [*]u8, is_user_src: bool, src_addr: u64, len: u64) boo
 
     if (is_user_src) {
         assert(proc.page_table != null, &@src());
-        return vm.copyIn(proc.page_table.?, @intFromPtr(dest), src_addr, len);
+        try vm.copyIn(
+            proc.page_table.?,
+            @intFromPtr(dest),
+            src_addr,
+            len,
+        );
     } else {
         misc.memMove(dest, @ptrFromInt(src_addr), len);
-        return true;
     }
 }
 
