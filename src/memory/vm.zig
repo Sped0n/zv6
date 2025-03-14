@@ -5,17 +5,27 @@ const panic = @import("../printf.zig").panic;
 const Process = @import("../process/Process.zig");
 const riscv = @import("../riscv.zig");
 
-///kernel page table
-var kernel_page_table: riscv.PageTable = undefined;
-
 // kernel.ld set this to end of kernel code.
 const etext = @extern(*u8, .{ .name = "etext" });
 
 // trampoline.S
 const trampoline = @extern(*u8, .{ .name = "trampoline" });
 
-pub fn kvmMake() riscv.PageTable {
-    const kpgtbl: riscv.PageTable = @alignCast(@ptrCast(kmem.alloc()));
+pub const Error = error{
+    MapPagesFailed,
+    TryWalkIntoInvalidPage,
+    PTEFlagNotV,
+    PTEFlagNotU,
+    PTEFlagNotW,
+    VAOutOfRange,
+    GotNull,
+};
+
+///kernel page table
+var kernel_page_table: riscv.PageTable = undefined;
+
+pub fn kvmMake() !riscv.PageTable {
+    const kpgtbl: riscv.PageTable = @alignCast(@ptrCast(try kmem.alloc()));
 
     const mem: *[4096]u8 = @ptrCast(kpgtbl);
     @memset(mem, 0);
@@ -87,14 +97,18 @@ pub fn kvmMake() riscv.PageTable {
     );
 
     // allocate and map a kernel stack for each process.
-    Process.mapStacks(kpgtbl);
+    try Process.mapStacks(kpgtbl);
 
     return kpgtbl;
 }
 
 ///Initialize the one kernel_page_table
 pub fn kvmInit() void {
-    kernel_page_table = kvmMake();
+    kernel_page_table = kvmMake() catch |e| panic(
+        @src(),
+        "kvmMake failed with {s}",
+        .{@errorName(e)},
+    );
 }
 
 ///Switch h/w page table register to the kernel's page table,
@@ -125,7 +139,7 @@ pub fn walk(
     page_table: riscv.PageTable,
     virt_addr: u64,
     alloc: bool,
-) ?*riscv.Pte {
+) !*riscv.Pte {
     if (virt_addr > riscv.max_va) panic(
         @src(),
         "va({x}) greater than maxva",
@@ -146,14 +160,9 @@ pub fn walk(
         if (pte & @intFromEnum(riscv.PteFlag.v) != 0) {
             local_page_table = @ptrFromInt(riscv.pte2Pa(pte));
         } else {
-            if (!alloc) return null;
+            if (!alloc) return Error.TryWalkIntoInvalidPage;
 
-            if (kmem.alloc()) |page_ptr| {
-                local_page_table = @alignCast(@ptrCast(page_ptr));
-            } else {
-                panic(@src(), "kalloc failed", .{});
-                return null;
-            }
+            local_page_table = @alignCast(@ptrCast(try kmem.alloc()));
 
             const mem = @as(
                 [*]u8,
@@ -173,19 +182,17 @@ pub fn walk(
 ///Look up a virtual address, return the physical address,
 ///or null if not mapped.
 ///Can only be used to look up user pages.
-pub fn walkAddr(page_table: riscv.PageTable, virt_addr: u64) ?u64 {
-    if (virt_addr >= riscv.max_va) {
-        return null;
-    }
+pub fn walkAddr(page_table: riscv.PageTable, virt_addr: u64) !u64 {
+    if (virt_addr >= riscv.max_va) return Error.VAOutOfRange;
 
-    const pte = (walk(
+    const pte = (try walk(
         page_table,
         virt_addr,
         false,
-    ) orelse return null).*;
+    )).*;
 
-    if ((pte & @intFromEnum(riscv.PteFlag.v)) == 0) return null;
-    if ((pte & @intFromEnum(riscv.PteFlag.u)) == 0) return null;
+    if ((pte & @intFromEnum(riscv.PteFlag.v)) == 0) return Error.PTEFlagNotV;
+    if ((pte & @intFromEnum(riscv.PteFlag.u)) == 0) return Error.PTEFlagNotU;
 
     const phy_addr = riscv.pte2Pa(pte);
     return phy_addr;
@@ -201,19 +208,23 @@ pub fn kvmMap(
     size: u64,
     permission: u64,
 ) void {
-    if (!mapPages(
+    mapPages(
         kpgtbl,
         virt_addr,
         size,
         phy_addr,
         permission,
-    )) panic(@src(), "mapPages failed", .{});
+    ) catch |e| panic(
+        @src(),
+        "mapPages failed with {s}",
+        .{@errorName(e)},
+    );
 }
 
 ///Create PTEs for virtual addresses starting at va that refer to
 ///physical addresses starting at pa.
 ///va and size MUST be page-aligned.
-///Returns 0 on success, -1 if walk() couldn't
+///Returns true on success, false if walk() couldn't
 ///allocate a needed page-table page.
 pub fn mapPages(
     page_table: riscv.PageTable,
@@ -221,7 +232,7 @@ pub fn mapPages(
     size: u64,
     phy_addr: u64,
     permission: u64,
-) bool {
+) !void {
     if ((virt_addr % riscv.pg_size) != 0) panic(
         @src(),
         "va({x}) not aligned",
@@ -248,11 +259,11 @@ pub fn mapPages(
         local_virt_addr += riscv.pg_size;
         local_phy_addr += riscv.pg_size;
     }) {
-        const pte_ptr = walk(
+        const pte_ptr = try walk(
             page_table,
             local_virt_addr,
             true,
-        ) orelse return false;
+        );
         if (pte_ptr.* & @intFromEnum(riscv.PteFlag.v) != 0) {
             panic(
                 @src(),
@@ -266,8 +277,6 @@ pub fn mapPages(
             riscv.PteFlag.v,
         );
     }
-
-    return true;
 }
 
 ///Remove npages of mappings starting from va. va must be
@@ -288,37 +297,36 @@ pub fn uvmUnmap(
     var local_virt_addr = virt_addr;
     const last = virt_addr + npages * riscv.pg_size;
     while (local_virt_addr < last) : (local_virt_addr += riscv.pg_size) {
-        if (walk(
+        const pte_ptr = walk(
             page_table,
             local_virt_addr,
             false,
-        )) |pte_ptr| {
-            const pte = pte_ptr.*;
+        ) catch |e| panic(
+            @src(),
+            "walk failed with {s}",
+            .{@errorName(e)},
+        );
+        const pte = pte_ptr.*;
 
-            if ((pte & @intFromEnum(
-                riscv.PteFlag.v,
-            )) == 0) panic(@src(), "not mapped", {});
-            if (riscv.pteFlags(pte) == @intFromEnum(
-                riscv.PteFlag.v,
-            )) panic(@src(), "not a leaf", .{});
+        if ((pte & @intFromEnum(
+            riscv.PteFlag.v,
+        )) == 0) panic(@src(), "not mapped", {});
+        if (riscv.pteFlags(pte) == @intFromEnum(
+            riscv.PteFlag.v,
+        )) panic(@src(), "not a leaf", .{});
 
-            if (free) {
-                const phy_addr = riscv.pte2Pa(pte);
-                kmem.free(@ptrFromInt(phy_addr));
-            }
-            pte_ptr.* = 0;
-        } else {
-            panic(@src(), "walk failed", .{});
+        if (free) {
+            const phy_addr = riscv.pte2Pa(pte);
+            kmem.free(@ptrFromInt(phy_addr));
         }
+        pte_ptr.* = 0;
     }
 }
 
 ///create an empty user page table.
-///returns 0 if out of memory.
-pub fn uvmCreate() ?riscv.PageTable {
-    const page_table: riscv.PageTable = @alignCast(@ptrCast(
-        kmem.alloc() orelse return null,
-    ));
+///returns error if out of memory.
+pub fn uvmCreate() !riscv.PageTable {
+    const page_table: riscv.PageTable = @alignCast(@ptrCast(try kmem.alloc()));
 
     const mem = @as([*]u8, @ptrCast(page_table))[0..riscv.pg_size];
     @memset(mem, 0);
@@ -349,18 +357,21 @@ pub fn uvmFirst(page_table: riscv.PageTable, src: []const u8) void {
         @intFromEnum(riscv.PteFlag.x) |
         @intFromEnum(riscv.PteFlag.u);
 
-    if (!mapPages(
+    mapPages(
         page_table,
         0,
         riscv.pg_size,
         @intFromPtr(mem_ptr),
         permission,
-    )) {
+    ) catch |e| {
         kmem.free(mem_ptr);
-        panic(@src(), "mapPages failed", .{});
-    } else {
-        _ = misc.memMove(mem, src, src.len);
-    }
+        panic(
+            @src(),
+            "mapPages failed with {d}",
+            .{@errorName(e)},
+        );
+    };
+    _ = misc.memMove(mem, src, src.len);
 }
 
 ///Allocate PTEs and physical memory to grow process from oldsz to
@@ -370,34 +381,33 @@ pub fn uvmMalloc(
     old_size: u64,
     new_size: u64,
     permission: u64,
-) ?u64 {
+) !u64 {
     if (new_size < old_size) return old_size;
 
     const local_old_size = riscv.pgRoundUp(old_size);
     var size = local_old_size;
     while (size < new_size) : (size += riscv.pg_size) {
-        const mem_ptr = kmem.alloc();
-        if (mem_ptr == null) {
+        const mem_ptr = kmem.alloc() catch |e| {
             uvmDealloc(page_table, size, local_old_size);
-            return null;
-        }
+            return e;
+        };
 
-        const mem = @as([*]u8, @ptrCast(mem_ptr.?))[0..riscv.pg_size];
+        const mem = @as([*]u8, @ptrCast(mem_ptr))[0..riscv.pg_size];
         @memset(mem, 0);
 
         const ru_permission = @intFromEnum(riscv.PteFlag.r) |
             @intFromEnum(riscv.PteFlag.u);
-        if (!mapPages(
+        mapPages(
             page_table,
             size,
             riscv.pg_size,
-            @intFromPtr(mem_ptr.?),
+            @intFromPtr(mem_ptr),
             ru_permission | permission,
-        )) {
-            kmem.free(mem_ptr.?);
+        ) catch {
+            kmem.free(mem_ptr);
             uvmDealloc(page_table, size, old_size);
-            return null;
-        }
+            return Error.MapPagesFailed;
+        };
     }
     return new_size;
 }
@@ -476,7 +486,7 @@ pub fn uvmFree(page_table: riscv.PageTable, size: u64) void {
 ///physical memory.
 ///returns true on success, false on failure.
 ///frees any allocated pages on failure.
-pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) bool {
+pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) !void {
     var addr: usize = 0;
 
     while (addr < size) : (addr += riscv.pg_size) {
@@ -484,10 +494,9 @@ pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) bool {
             old,
             addr,
             false,
-        );
-        if (pte_ptr == null) panic(@src(), "pte should exist", .{});
+        ) catch panic(@src(), "pte should exist", .{});
 
-        const pte = pte_ptr.?.*;
+        const pte = pte_ptr.*;
         if (pte & @intFromEnum(riscv.PteFlag.v)) panic(
             @src(),
             "page not present, current pte flag is {x}",
@@ -496,18 +505,15 @@ pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) bool {
         const phy_addr = riscv.pte2Pa(pte);
         const flags = riscv.pteFlags(pte);
 
-        var mem_ptr: *[4096]u8 = undefined;
-        if (kmem.alloc()) |page_ptr| {
-            mem_ptr = page_ptr;
-        } else {
+        const mem_ptr = kmem.alloc() catch |e| {
             uvmUnmap(
                 new,
                 0,
                 addr / riscv.pg_size,
                 true,
             );
-            return false;
-        }
+            return e;
+        };
 
         _ = misc.memMove(
             mem_ptr,
@@ -515,13 +521,13 @@ pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) bool {
             riscv.pg_size,
         );
 
-        if (!mapPages(
+        mapPages(
             new,
             addr,
             riscv.pg_size,
             @intFromPtr(mem_ptr),
             flags,
-        )) {
+        ) catch {
             kmem.free(mem_ptr);
             uvmUnmap(
                 new,
@@ -529,11 +535,9 @@ pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) bool {
                 addr / riscv.pg_size,
                 true,
             );
-            return false;
-        }
+            return Error.MapPagesFailed;
+        };
     }
-
-    return true;
 }
 
 ///mark a PTE invalid for user access.
@@ -543,38 +547,42 @@ pub fn uvmClear(page_table: riscv.PageTable, virt_addr: u64) void {
         page_table,
         virt_addr,
         false,
+    ) catch |e| panic(
+        @src(),
+        "walk failed with {s}",
+        .{@errorName(e)},
     );
-    if (pte_ptr == null) panic(@src(), "walk failed", .{});
-    pte_ptr.?.* &= ~@intFromPtr(riscv.PteFlag.u);
+    pte_ptr.* &= ~@intFromPtr(riscv.PteFlag.u);
 }
 
 ///Copy from kernel to user.
 ///Copy len bytes from src to virtual address dstva in a given page table.
-///Return true on success, false on error.
 pub fn copyOut(
     page_table: riscv.PageTable,
     dest_virt_addr: u64,
     src: [*]const u8,
     len: u64,
-) bool {
+) !void {
     var local_len = len;
     var local_src = src;
     var local_dstva = dest_virt_addr;
 
     while (local_len > 0) {
         const virt_addr = riscv.pgRoundDown(local_dstva);
-        if (virt_addr >= riscv.max_va) return false;
+        if (virt_addr >= riscv.max_va) return Error.VAOutOfRange;
 
-        const pte_ptr = walk(page_table, virt_addr, false);
-        if (pte_ptr == null) return false;
-        const pte = pte_ptr.?.*;
-        if ((pte & @intFromEnum(
+        const pte_ptr = try walk(page_table, virt_addr, false);
+        const pte = pte_ptr.*;
+
+        if (pte & @intFromEnum(
             riscv.PteFlag.v,
-        ) == 0) or (pte & @intFromEnum(
+        ) == 0) return Error.PTEFlagNotV;
+        if (pte & @intFromEnum(
             riscv.PteFlag.u,
-        ) == 0) or (pte & @intFromEnum(
+        ) == 0) return Error.PTEFlagNotU;
+        if (pte & @intFromEnum(
             riscv.PteFlag.w,
-        ))) return false;
+        ) == 0) return Error.PTEFlagNotW;
 
         const phy_addr = riscv.pte2Pa(pte);
         const n: u64 = @min(
@@ -592,53 +600,52 @@ pub fn copyOut(
         local_src += n;
         local_dstva = virt_addr + riscv.pg_size;
     }
-    return true;
 }
 
 ///Copy from user to kernel.
 ///Copy len bytes to dst from virtual address srcva in a given page table.
-///Return 0 on success, -1 on error.
 pub fn copyIn(
     page_table: riscv.PageTable,
     dest: [*]u8,
     src_virt_addr: u64,
     len: u64,
-) bool {
+) !void {
     var local_len = len;
     var local_dest = dest;
     var local_srcva = src_virt_addr;
 
     while (local_len > 0) {
         const virt_addr = riscv.pgRoundDown(local_srcva);
-        const phy_addr = walkAddr(
+        const phy_addr = try walkAddr(
             page_table,
             virt_addr,
-        ) orelse return false;
+        );
         const n: u64 = @min(
             riscv.pg_size - (local_srcva - virt_addr),
             local_len,
         );
 
-        _ = misc.memMove(local_dest, @ptrFromInt(phy_addr + (local_srcva - virt_addr)), n);
+        _ = misc.memMove(
+            local_dest,
+            @ptrFromInt(phy_addr + (local_srcva - virt_addr)),
+            n,
+        );
 
         local_len -= n;
         local_dest += n;
         local_srcva = virt_addr + riscv.pg_size;
     }
-
-    return true;
 }
 
 ///Copy a null-terminated string from user to kernel.
 ///Copy bytes to dst from virtual address srcva in a given page table,
 ///until a '\0', or max.
-///Return 0 on success, -1 on error.
 pub fn copyInStr(
     page_table: riscv.PageTable,
     dest: [*]u8,
     src_virt_addr: u64,
     max: u64,
-) bool {
+) !void {
     var local_max = max;
     var local_dest = dest;
     var local_srcva = src_virt_addr;
@@ -646,10 +653,10 @@ pub fn copyInStr(
 
     while (!got_null and local_max > 0) {
         const virt_addr = riscv.pgRoundDown(local_srcva);
-        const phy_addr = walkAddr(
+        const phy_addr = try walkAddr(
             page_table,
             virt_addr,
-        ) orelse return false;
+        );
 
         var n: u64 = @min(
             riscv.pg_size - (local_srcva - virt_addr),
@@ -675,5 +682,5 @@ pub fn copyInStr(
         local_srcva = virt_addr + riscv.pg_size;
     }
 
-    return got_null;
+    if (got_null) return Error.GotNull;
 }

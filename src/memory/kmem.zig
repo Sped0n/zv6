@@ -13,6 +13,8 @@ const Block = struct {
 var lock: SpinLock = undefined;
 var freelist: ?*Block = null;
 
+pub const Error = error{OutOfMemory};
+
 pub fn init() void {
     lock.init("kmem");
     freeRange(@intFromPtr(end), memlayout.phy_stop);
@@ -63,7 +65,7 @@ pub fn free(page_ptr: *[4096]u8) void {
 ///Allocate one 4096-byte page of physical memory.
 ///Returns a pointer that the kernel can use.
 ///Returns null if the memory cannot be allocated.
-pub fn alloc() ?*[4096]u8 {
+pub fn alloc() !*[4096]u8 {
     var r: ?*Block = null;
 
     {
@@ -82,5 +84,5 @@ pub fn alloc() ?*[4096]u8 {
         return mem;
     }
 
-    return null;
+    return Error.OutOfMemory;
 }
