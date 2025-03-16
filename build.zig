@@ -51,6 +51,15 @@ pub fn build(b: *std.Build) void {
         check.dependOn(&exe_check.step);
     }
 
+    const virtio_args = [_][]const u8{
+        "-global",
+        "virtio-mmio.force-legacy=false",
+        "-drive",
+        "file=fs.img,if=none,format=raw,id=x0",
+        "-device",
+        "virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0",
+    };
+
     const qemu_run_args = [_][]const u8{
         "qemu-system-riscv64",
         "-machine",
@@ -68,7 +77,7 @@ pub fn build(b: *std.Build) void {
         "-nographic",
         "-serial",
         "mon:stdio",
-    };
+    } ++ virtio_args;
 
     const qemu_gdb_args = qemu_run_args ++ [_][]const u8{
         // Enable the GDB stub.  The exact option depends on the QEMU version.
