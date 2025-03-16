@@ -1,4 +1,4 @@
-const SpinLock = @import("../lock/spinlock.zig");
+const SpinLock = @import("../lock/SpinLock.zig");
 
 const pipe_size = 512;
 
