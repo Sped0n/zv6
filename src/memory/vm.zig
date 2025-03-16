@@ -25,7 +25,7 @@ pub const Error = error{
 var kernel_page_table: riscv.PageTable = undefined;
 
 pub fn kvmMake() !riscv.PageTable {
-    const kpgtbl: riscv.PageTable = @alignCast(@ptrCast(try kmem.alloc()));
+    const kpgtbl: riscv.PageTable = @ptrCast(@alignCast(try kmem.alloc()));
 
     const mem: *[4096]u8 = @ptrCast(kpgtbl);
     @memset(mem, 0);
@@ -162,7 +162,7 @@ pub fn walk(
         } else {
             if (!alloc) return Error.TryWalkIntoInvalidPage;
 
-            local_page_table = @alignCast(@ptrCast(try kmem.alloc()));
+            local_page_table = @ptrCast(@alignCast(try kmem.alloc()));
 
             const mem = @as(
                 [*]u8,
@@ -326,7 +326,7 @@ pub fn uvmUnmap(
 ///create an empty user page table.
 ///returns error if out of memory.
 pub fn uvmCreate() !riscv.PageTable {
-    const page_table: riscv.PageTable = @alignCast(@ptrCast(try kmem.alloc()));
+    const page_table: riscv.PageTable = @ptrCast(@alignCast(try kmem.alloc()));
 
     const mem = @as([*]u8, @ptrCast(page_table))[0..riscv.pg_size];
     @memset(mem, 0);
