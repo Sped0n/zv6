@@ -20,11 +20,14 @@ pub fn memMove(dest: [*]u8, src: [*]const u8, n: usize) [*]u8 {
     }
 }
 
-///We only use this in process name copying, so its okay to use fixed size.
-pub fn safeStrCopy(dest: *[16]u8, src: []const u8) void {
+pub fn safeStrCopy(dest: []u8, src: []const u8) void {
+    if (dest.len == 0) {
+        return; // Destination buffer is too small.
+    }
+
     const len = @min(src.len, dest.len - 1);
     @memcpy(dest[0..len], src[0..len]);
-    dest[len + 1] = 0;
+    dest[len] = 0; // Null-terminate at the end of the copied region
 }
 
 ///https://ziglang.org/download/0.14.0/release-notes.html#toc-Synchronize-External-Operations
