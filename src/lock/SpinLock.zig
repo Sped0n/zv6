@@ -23,7 +23,11 @@ pub fn init(self: *Self, comptime name: []const u8) void {
 ///Interrupts must be off.
 pub fn acquire(self: *Self) void {
     pushOff();
-    if (self.holding()) panic(@src(), "acquire while holding", .{});
+    if (self.holding()) panic(
+        @src(),
+        "acquire while holding(lock: {s})",
+        .{self.name},
+    );
 
     while (@atomicRmw(
         bool,
@@ -41,7 +45,11 @@ pub fn acquire(self: *Self) void {
 
 ///Release the lock.
 pub fn release(self: *Self) void {
-    if (!self.holding()) panic(@src(), "not holding", .{});
+    if (!self.holding()) panic(
+        @src(),
+        "not holding(lock: {s})",
+        .{self.name},
+    );
 
     self.cpu = null;
 
