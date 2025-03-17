@@ -26,6 +26,7 @@ pub const Error = error{
     PermissionNotValid,
     DeviceMajorNotValid,
     DevswMethodIsNull,
+    DevswMethodFailed,
     WrittenLenMismatch,
 };
 
@@ -111,7 +112,8 @@ pub fn close(self: *Self) void {
 
     switch (file.type) {
         .pipe => {
-            // TODO: pipeclose()
+            assert(file.pipe != null, @src());
+            file.pipe.?.close(file.writable);
         },
         .inode, .device => {
             assert(file.inode != null, @src());
@@ -160,14 +162,19 @@ pub fn read(self: *Self, user_virt_addr: u64, len: u32) !u32 {
 
     switch (self.type) {
         .pipe => {
-            // TODO: piperead();
+            assert(self.pipe != null, @src());
+            self.pipe.?.read(user_virt_addr, len);
         },
         .device => {
             if (self.major < 0 or
                 self.major >= param.n_dev) return Error.DeviceMajorNotValid;
 
             if (device_switches[self.major].read) |_read| {
-                return _read(1, user_virt_addr, len);
+                return _read(
+                    1,
+                    user_virt_addr,
+                    len,
+                ) orelse return Error.DevswMethodFailed;
             } else {
                 return Error.DevswMethodIsNull;
             }
@@ -201,14 +208,19 @@ pub fn write(self: *Self, user_virt_addr: u64, len: u32) !u32 {
 
     switch (self.type) {
         .pipe => {
-            // TODO: pipe write
+            assert(self.pipe != null, @src());
+            self.pipe.?.write(user_virt_addr, len);
         },
         .device => {
             if (self.major < 0 or
                 self.major >= param.n_dev) return Error.DeviceMajorNotValid;
 
             if (device_switches[self.major].write) |_write| {
-                return _write(1, user_virt_addr, len);
+                return _write(
+                    1,
+                    user_virt_addr,
+                    len,
+                ) orelse return Error.DevswMethodFailed;
             } else {
                 return Error.DevswMethodIsNull;
             }

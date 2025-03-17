@@ -1,7 +1,9 @@
 const builtin = @import("std").builtin;
 
 const File = @import("../fs/File.zig");
+const fs = @import("../fs/fs.zig");
 const Inode = @import("../fs/Inode.zig");
+const log = @import("../fs/log.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
 const memlayout = @import("../memlayout.zig");
 const kmem = @import("../memory/kmem.zig");
@@ -51,7 +53,7 @@ size: u64, // Size of process memory (bytes)
 page_table: ?riscv.PageTable, // User page table
 trap_frame: *TrapFrame, // data page for trampoline.S
 context: Context, // swtch() here to run process
-ofile: *[param.n_ofile]File, // Open files
+ofiles: [param.n_ofile]?*File, // Open files
 cwd: ?*Inode, // Current directory
 name: [16]u8, // Process name (debugging)
 
@@ -68,7 +70,7 @@ pub var procs: [param.n_proc]Self = [_]Self{Self{
     .page_table = null,
     .trap_frame = undefined,
     .context = undefined,
-    .ofile = undefined,
+    .ofiles = undefined,
     .cwd = null,
     .name = [_]u8{0} ** 16,
 }} ** param.n_proc;
@@ -309,6 +311,7 @@ pub fn fork() !u32 {
     );
 
     assert(proc.page_table != null, @src());
+    assert(proc.cwd != null, @src());
 
     const new_proc = try create();
 
@@ -329,8 +332,12 @@ pub fn fork() !u32 {
     // Cause fork to return 0 in the child.
     new_proc.trap_frame.a0 = 0;
 
-    // TODO: ofile
-    // TODO: cwd
+    for (0..param.n_ofile) |i| {
+        if (proc.ofiles[i]) |ofile| {
+            new_proc.ofiles[i] = ofile.dup();
+        }
+    }
+    new_proc.cwd = proc.cwd.?.dup();
 
     misc.safeStrCopy(&new_proc.name, proc.name);
 
@@ -371,12 +378,24 @@ pub fn exit(status: i32) void {
         .{},
     );
     assert(proc.parent != null, @src());
+    assert(proc.cwd != null, @src());
 
     if (proc == init_proc) panic(@src(), "init exiting", .{});
 
-    // TODO: close all open files
+    for (0..param.n_ofile) |fd| {
+        if (proc.ofiles[fd]) |ofile| {
+            ofile.close();
+            proc.ofiles[fd] = null;
+        }
+    }
 
-    // TODO: handle cwd
+    {
+        log.beginOp();
+        defer log.endOp();
+
+        proc.cwd.?.put();
+    }
+    proc.cwd = null;
 
     {
         wait_lock.acquire();
@@ -486,7 +505,10 @@ pub fn forkRet() void {
         &S.first,
         builtin.AtomicOrder.acquire,
     ) == true) {
-        // TODO: fsinit
+        // File system initialization must be run in the context of a
+        // regular process (e.g., because it calls sleep), and thus cannot
+        // be run from main().
+        fs.init(param.root_dev);
 
         // ensure other core see it.
         @atomicStore(

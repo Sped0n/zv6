@@ -284,7 +284,7 @@ pub fn put(self: *Self) void {
             inode_table.lock.acquire();
         }
 
-        // TODO: trunc
+        self.trunc();
         self.dinode.type = .free;
         self.update();
         self.valid = false;
