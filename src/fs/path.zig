@@ -1,9 +1,11 @@
-const fs = @import("fs.zig");
+const mem = @import("std").mem;
+
 const misc = @import("../misc.zig");
-const Inode = @import("Inode.zig");
 const param = @import("../param.zig");
-const Process = @import("../process/Process.zig");
 const panic = @import("../printf.zig").panic;
+const Process = @import("../process/Process.zig");
+const fs = @import("fs.zig");
+const Inode = @import("Inode.zig");
 
 // Paths -----------------------------------------------------------------------
 
@@ -44,22 +46,12 @@ fn skipElem(path: []const u8, name: *[fs.dir_size]u8) usize {
         curr += 1;
     }
 
-    const len = curr - start;
+    const len = @min(curr - start, fs.dir_size);
 
     // Copy the Element to name
     const name_ptr = @as([*]u8, name);
-    if (len >= fs.dir_size) {
-        // Truncate if too long
-        misc.memMove(
-            name_ptr,
-            path[start .. start + fs.dir_size].ptr,
-            fs.dir_size,
-        );
-    } else {
-        // Copy and null-terminate
-        misc.memMove(name_ptr, path[start..curr].ptr, len);
-        name_ptr[len] = 0;
-    }
+    misc.memMove(name_ptr, path[start .. start + len].ptr, len);
+    name_ptr[len] = 0;
 
     // Skip Trailing Slashes
     while (curr < path.len and path[curr] == '/') {
@@ -115,7 +107,10 @@ fn namex(path: []const u8, is_parent: bool, name: *[fs.dir_size]u8) !*Inode {
             return inode_ptr;
         }
 
-        if (inode_ptr.dirLookUp(name, null)) |n| {
+        if (inode_ptr.dirLookUp(
+            mem.sliceTo(name, 0),
+            null,
+        )) |n| {
             next = n;
         } else {
             inode_ptr.unlockPut();
