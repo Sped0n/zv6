@@ -18,7 +18,7 @@ pub const Error = error{
     PTEFlagNotU,
     PTEFlagNotW,
     VAOutOfRange,
-    GotNull,
+    NotNullTerminated,
 };
 
 ///kernel page table
@@ -671,16 +671,16 @@ pub fn copyInStr(
             local_dst += 1;
         }) {
             if (p[0] == 0) {
-                (&local_dst[0]).* = 0;
+                local_dst[0] = 0;
                 got_null = true;
                 break;
             } else {
-                (&local_dst[0]).* = p[0];
+                local_dst[0] = p[0];
             }
         }
 
         local_srcva = virt_addr + riscv.pg_size;
     }
 
-    if (got_null) return Error.GotNull;
+    if (!got_null) return Error.NotNullTerminated;
 }
