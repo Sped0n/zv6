@@ -559,13 +559,13 @@ pub fn uvmClear(page_table: riscv.PageTable, virt_addr: u64) void {
 ///Copy len bytes from src to virtual address dstva in a given page table.
 pub fn copyOut(
     page_table: riscv.PageTable,
-    dest_virt_addr: u64,
+    dst_virt_addr: u64,
     src: [*]const u8,
     len: u64,
 ) !void {
     var local_len = len;
     var local_src = src;
-    var local_dstva = dest_virt_addr;
+    var local_dstva = dst_virt_addr;
 
     while (local_len > 0) {
         const virt_addr = riscv.pgRoundDown(local_dstva);
@@ -606,12 +606,12 @@ pub fn copyOut(
 ///Copy len bytes to dst from virtual address srcva in a given page table.
 pub fn copyIn(
     page_table: riscv.PageTable,
-    dest: [*]u8,
+    dst: [*]u8,
     src_virt_addr: u64,
     len: u64,
 ) !void {
     var local_len = len;
-    var local_dest = dest;
+    var local_dst = dst;
     var local_srcva = src_virt_addr;
 
     while (local_len > 0) {
@@ -626,13 +626,13 @@ pub fn copyIn(
         );
 
         misc.memMove(
-            local_dest,
+            local_dst,
             @ptrFromInt(phy_addr + (local_srcva - virt_addr)),
             n,
         );
 
         local_len -= n;
-        local_dest += n;
+        local_dst += n;
         local_srcva = virt_addr + riscv.pg_size;
     }
 }
@@ -642,12 +642,12 @@ pub fn copyIn(
 ///until a '\0', or max.
 pub fn copyInStr(
     page_table: riscv.PageTable,
-    dest: [*]u8,
+    dst: [*]u8,
     src_virt_addr: u64,
     max: u64,
 ) !void {
     var local_max = max;
-    var local_dest = dest;
+    var local_dst = dst;
     var local_srcva = src_virt_addr;
     var got_null = false;
 
@@ -668,14 +668,14 @@ pub fn copyInStr(
             n -= 1;
             local_max -= 1;
             p += 1;
-            local_dest += 1;
+            local_dst += 1;
         }) {
             if (p[0] == 0) {
-                (&local_dest[0]).* = 0;
+                (&local_dst[0]).* = 0;
                 got_null = true;
                 break;
             } else {
-                (&local_dest[0]).* = p[0];
+                (&local_dst[0]).* = p[0];
             }
         }
 

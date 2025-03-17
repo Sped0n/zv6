@@ -579,8 +579,8 @@ pub fn isKilled(self: *Self) bool {
 ///depending on usr_dst.
 ///Returns true on success, false on error.
 pub fn eitherCopyOut(
-    is_user_dest: bool,
-    dest_addr: u64,
+    is_user_dst: bool,
+    dst_addr: u64,
     src: [*]const u8,
     len: u64,
 ) !void {
@@ -590,23 +590,23 @@ pub fn eitherCopyOut(
         .{},
     );
 
-    if (is_user_dest) {
+    if (is_user_dst) {
         assert(proc.page_table != null, @src());
         try vm.copyOut(
             proc.page_table.?,
-            dest_addr,
+            dst_addr,
             src,
             len,
         );
     } else {
-        misc.memMove(@ptrFromInt(dest_addr), src, len);
+        misc.memMove(@ptrFromInt(dst_addr), src, len);
     }
 }
 
 ///Copy from either a user address, or kernel address,
 ///depending on usr_src.
 ///Returns true on success, false on error.
-pub fn eitherCopyIn(dest: [*]u8, is_user_src: bool, src_addr: u64, len: u64) !void {
+pub fn eitherCopyIn(dst: [*]u8, is_user_src: bool, src_addr: u64, len: u64) !void {
     const proc = current() catch panic(
         @src(),
         "current proc is null",
@@ -617,12 +617,12 @@ pub fn eitherCopyIn(dest: [*]u8, is_user_src: bool, src_addr: u64, len: u64) !vo
         assert(proc.page_table != null, @src());
         try vm.copyIn(
             proc.page_table.?,
-            dest,
+            dst,
             src_addr,
             len,
         );
     } else {
-        misc.memMove(dest, @ptrFromInt(src_addr), len);
+        misc.memMove(dst, @ptrFromInt(src_addr), len);
     }
 }
 

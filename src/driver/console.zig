@@ -32,10 +32,10 @@ pub fn putChar(char: u8) void {
 }
 
 ///user write()s to the console go here.
-pub fn write(is_user_src: bool, src_addr: u64, n: u32) ?u32 {
+pub fn write(is_user_src: bool, src_addr: u64, len: u32) ?u32 {
     var i: u32 = 0;
 
-    while (i < n) : (i += 1) {
+    while (i < len) : (i += 1) {
         var char: u8 = 0;
         Process.eitherCopyIn(
             @ptrCast(&char),
@@ -46,7 +46,7 @@ pub fn write(is_user_src: bool, src_addr: u64, n: u32) ?u32 {
         uart.putChar(char);
     }
 
-    if (i == 0 and i != n) {
+    if (i == 0 and i != len) {
         return null;
     } else {
         return i;
@@ -57,17 +57,17 @@ pub fn write(is_user_src: bool, src_addr: u64, n: u32) ?u32 {
 // copy (up to) a whole input line to dst.
 // user_dist indicates whether dst is a user
 // or kernel address.
-pub fn read(is_user_dst: bool, dest_addr: u64, n: u32) ?u32 {
-    var local_n = n;
-    var local_dest_addr = dest_addr;
+pub fn read(is_user_dst: bool, dst_addr: u64, len: u32) ?u32 {
+    var local_len = len;
+    var local_dst_addr = dst_addr;
     var char: u8 = 0;
 
     lock.acquire();
     defer lock.release();
 
-    while (local_n > 0) : ({
-        local_dest_addr += 1;
-        local_n -= 1;
+    while (local_len > 0) : ({
+        local_dst_addr += 1;
+        local_len -= 1;
 
         // a whole line has arrived, return to
         // the user-level read().
@@ -87,7 +87,7 @@ pub fn read(is_user_dst: bool, dest_addr: u64, n: u32) ?u32 {
         read_index += 1;
 
         if (char == ctrl('D')) { // end-of-file
-            if (local_n < n) {
+            if (local_len < len) {
                 // Save ^D for next time, to make sure
                 // caller gets a 0-byte result.
                 read_index -= 1;
@@ -99,13 +99,13 @@ pub fn read(is_user_dst: bool, dest_addr: u64, n: u32) ?u32 {
         const char_buffer = char;
         Process.eitherCopyOut(
             is_user_dst,
-            dest_addr,
+            dst_addr,
             @ptrCast(&char_buffer),
             1,
         ) catch break;
     }
 
-    return n - local_n;
+    return len - local_len;
 }
 
 pub fn intr(char: u8) void {

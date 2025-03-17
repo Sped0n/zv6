@@ -396,12 +396,12 @@ pub fn stat(self: *Self, stat_ptr: *Stat) void {
 
 ///Read data from inode.
 ///Caller must hold self->lock.
-///If is_user_dest==true, then dest_addr is a user virtual address;
-///otherwise, dest_addr is a kernel address.
+///If is_user_dst==true, then dst_addr is a user virtual address;
+///otherwise, dst_addr is a kernel address.
 pub fn read(
     self: *Self,
-    is_user_dest: bool,
-    dest_addr: u64,
+    is_user_dst: bool,
+    dst_addr: u64,
     offset: u32,
     len: u32,
 ) !u32 {
@@ -416,12 +416,12 @@ pub fn read(
 
     var total: u32 = 0;
     var read_len: u32 = 0;
-    var local_dest_addr = dest_addr;
+    var local_dst_addr = dst_addr;
 
     while (total < local_len) : ({
         total += read_len;
         local_offset += read_len;
-        local_dest_addr += read_len;
+        local_dst_addr += read_len;
     }) {
         const blockno = self.bmap(
             local_offset / fs.block_size,
@@ -436,8 +436,8 @@ pub fn read(
             fs.block_size - modded_local_offset,
         );
         if (!Process.eitherCopyOut(
-            is_user_dest,
-            local_dest_addr,
+            is_user_dst,
+            local_dst_addr,
             buf_ptr.data[modded_local_offset..],
             read_len,
         )) return Error.VMCopyFailed;
