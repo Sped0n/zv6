@@ -6,17 +6,15 @@ const Cpu = @import("../process/Cpu.zig");
 const riscv = @import("../riscv.zig");
 
 locked: bool,
-name: []const u8,
+name: [*:0]const u8,
 cpu: ?*Cpu,
 
 const Self = @This();
 
-pub fn init(self: *Self, comptime name: []const u8) void {
-    self.* = Self{
-        .locked = false,
-        .name = name,
-        .cpu = null,
-    };
+pub fn init(self: *Self, comptime name: [*:0]const u8) void {
+    self.locked = false;
+    self.name = name;
+    self.cpu = null;
 }
 
 ///Check whether this cpu is holding the lock.

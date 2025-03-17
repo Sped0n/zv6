@@ -5,12 +5,12 @@ const SpinLock = @import("SpinLock.zig");
 locked: bool,
 lock: SpinLock,
 
-name: []const u8,
+name: [*:0]const u8,
 pid: i32,
 
 const Self = @This();
 
-pub fn init(self: *Self, comptime name: []const u8) void {
+pub fn init(self: *Self, comptime name: [*:0]const u8) void {
     self.lock.init("sleep lock");
     self.name = name;
     self.locked = false;
