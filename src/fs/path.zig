@@ -7,6 +7,12 @@ const panic = @import("../printf.zig").panic;
 
 // Paths -----------------------------------------------------------------------
 
+pub const Error = error{
+    InodeIsNotDirectory,
+    NextLookupFailed,
+    TraverseAll,
+};
+
 ///Copy the next path element from path into name.
 ///Return the current offset after skipping.
 ///so the caller can check path.len==curr to see if the name is the last one.
@@ -67,7 +73,7 @@ fn skipElem(path: []const u8, name: *[fs.dir_size]u8) usize {
 ///If is_parent == true, return the inode for the parent and copy the final
 ///path element into name, which must have room for dir_sz bytes.
 ///Must be called inside a transaction since it calls iput().
-fn namex(path: []const u8, is_parent: bool, name: *[fs.dir_size]u8) ?*Inode {
+fn namex(path: []const u8, is_parent: bool, name: *[fs.dir_size]u8) !*Inode {
     var inode_ptr: *Inode = undefined;
 
     if (path.len > 0 and path[0] == '/') {
@@ -100,7 +106,7 @@ fn namex(path: []const u8, is_parent: bool, name: *[fs.dir_size]u8) ?*Inode {
 
         if (inode_ptr.dinode.type != .directory) {
             inode_ptr.unlockPut();
-            return null;
+            return Error.InodeIsNotDirectory;
         }
 
         if (is_parent and path_offset_after_skip == path.len) {
@@ -113,7 +119,7 @@ fn namex(path: []const u8, is_parent: bool, name: *[fs.dir_size]u8) ?*Inode {
             next = n;
         } else {
             inode_ptr.unlockPut();
-            return null;
+            return Error.NextLookupFailed;
         }
 
         inode_ptr.unlockPut();
@@ -121,17 +127,17 @@ fn namex(path: []const u8, is_parent: bool, name: *[fs.dir_size]u8) ?*Inode {
 
     if (is_parent) {
         inode_ptr.put();
-        return null;
+        return Error.TraverseAll;
     }
 
     return inode_ptr;
 }
 
-pub fn namei(path: []const u8) *Inode {
+pub fn namei(path: []const u8) !*Inode {
     var name: [fs.dir_size]u8 = [_]u8{0} ** fs.dir_size;
     return namex(path, false, &name);
 }
 
-pub fn nameiParent(path: []const u8, name: *[fs.dir_size]u8) *Inode {
+pub fn nameiParent(path: []const u8, name: *[fs.dir_size]u8) !*Inode {
     return namex(path, true, name);
 }
