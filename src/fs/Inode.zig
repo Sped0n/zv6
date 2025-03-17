@@ -519,10 +519,6 @@ pub fn write(
 
 // Directories -----------------------------------------------------------------
 
-pub fn nameEql(s: [*]const u8, t: [*]const u8) bool {
-    return misc.memEql(s, t, fs.dir_size);
-}
-
 ///Look for a directory entry in a directory.
 ///If found, set *poff to byte offset of entry.
 pub fn dirLookUp(self: *Self, name: []const u8, offset_ptr: ?*u32) ?*Self {
@@ -551,7 +547,7 @@ pub fn dirLookUp(self: *Self, name: []const u8, offset_ptr: ?*u32) ?*Self {
 
         if (dir_entry.inum == 0) continue;
 
-        if (nameEql(name, dir_entry.name)) {
+        if (mem.eql(name, mem.sliceTo(&dir_entry.name, 0))) {
             if (offset_ptr) |p| p.* = offset;
             return get(self.dev, dir_entry.inum);
         }

@@ -1,5 +1,7 @@
 const atomic = @import("std").atomic;
 
+const fs = @import("fs/fs.zig");
+
 var dummy = atomic.Value(u8).init(0);
 
 ///https://github.com/ziglang/zig/blob/52ba2c3a43a88a4db30cff47f2f3eff8c3d5be19/lib/std/special/c.zig#L115
@@ -20,11 +22,7 @@ pub fn memMove(dst: [*]u8, src: [*]const u8, n: usize) void {
     }
 }
 
-pub fn safeStrCopy(dst: []u8, src: []const u8) void {
-    if (dst.len == 0) {
-        return; // Destination buffer is too small.
-    }
-
+pub fn safeStrCopy(dst: *[fs.dir_size]u8, src: []const u8) void {
     const len = @min(src.len, dst.len - 1);
     @memcpy(dst[0..len], src[0..len]);
     dst[len] = 0; // Null-terminate at the end of the copied region
@@ -38,6 +36,8 @@ pub fn fence() void {
 pub fn memEql(v1: [*]const u8, v2: [*]const u8, len: u32) bool {
     var i: u32 = 0;
     while (i < len) : (i += 1) {
+        if (v1[i] == 0 or v2[i] == 0) return v1[i] == v2[i];
+
         if (v1[i] != v2[i]) return false;
     }
     return true;

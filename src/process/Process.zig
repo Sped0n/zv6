@@ -1,4 +1,6 @@
-const builtin = @import("std").builtin;
+const std = @import("std");
+const builtin = std.builtin;
+const mem = std.mem;
 
 const File = @import("../fs/File.zig");
 const fs = @import("../fs/fs.zig");
@@ -189,11 +191,11 @@ fn create() !*Self {
 
         // Set up new context to start executing at forkret,
         // which returns to user space.
-        const mem = @as(
+        const ctx = @as(
             [*]u8,
             @ptrCast(&proc.context),
         )[0..@sizeOf(proc.context)];
-        @memset(mem, 0);
+        @memset(ctx, 0);
         proc.context.ra = @intFromPtr(&forkRet);
         proc.context.sp = proc.kstack + riscv.pg_size;
 
@@ -339,7 +341,7 @@ pub fn fork() !u32 {
     }
     new_proc.cwd = proc.cwd.?.dup();
 
-    misc.safeStrCopy(&new_proc.name, proc.name);
+    misc.safeStrCopy(&new_proc.name, mem.sliceTo(&proc.name, 0));
 
     const pid = new_proc.pid;
 
