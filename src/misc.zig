@@ -35,7 +35,7 @@ pub fn fence() void {
     _ = dummy.fetchAdd(0, .seq_cst);
 }
 
-pub fn memCmp(v1: [*]const u8, v2: [*]const u8, len: u32) bool {
+pub fn memEql(v1: [*]const u8, v2: [*]const u8, len: u32) bool {
     var i: u32 = 0;
     while (i < len) : (i += 1) {
         if (v1[i] != v2[i]) return false;
