@@ -371,7 +371,7 @@ pub fn uvmFirst(page_table: riscv.PageTable, src: []const u8) void {
             .{@errorName(e)},
         );
     };
-    _ = misc.memMove(mem, src, src.len);
+    misc.memMove(mem, src, src.len);
 }
 
 ///Allocate PTEs and physical memory to grow process from oldsz to
@@ -515,7 +515,7 @@ pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) !void {
             return e;
         };
 
-        _ = misc.memMove(
+        misc.memMove(
             mem_ptr,
             @ptrFromInt(phy_addr),
             riscv.pg_size,
@@ -590,7 +590,7 @@ pub fn copyOut(
             local_len,
         );
 
-        _ = misc.memMove(
+        misc.memMove(
             @ptrFromInt(phy_addr + (local_dstva - virt_addr)),
             local_src,
             n,
@@ -625,7 +625,7 @@ pub fn copyIn(
             local_len,
         );
 
-        _ = misc.memMove(
+        misc.memMove(
             local_dest,
             @ptrFromInt(phy_addr + (local_srcva - virt_addr)),
             n,

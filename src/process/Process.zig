@@ -1,6 +1,6 @@
 const builtin = @import("std").builtin;
 
-const File = @import("../fs/file.zig");
+const File = @import("../fs/File.zig");
 const Inode = @import("../fs/Inode.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
 const memlayout = @import("../memlayout.zig");
@@ -606,7 +606,7 @@ pub fn eitherCopyOut(
 ///Copy from either a user address, or kernel address,
 ///depending on usr_src.
 ///Returns true on success, false on error.
-pub fn eitherCopyIn(dest: [*]u8, is_user_src: bool, src_addr: u64, len: u64) bool {
+pub fn eitherCopyIn(dest: [*]u8, is_user_src: bool, src_addr: u64, len: u64) !void {
     const proc = current() catch panic(
         @src(),
         "current proc is null",
@@ -614,10 +614,10 @@ pub fn eitherCopyIn(dest: [*]u8, is_user_src: bool, src_addr: u64, len: u64) boo
     );
 
     if (is_user_src) {
-        assert(proc.page_table != null, &@src());
+        assert(proc.page_table != null, @src());
         try vm.copyIn(
             proc.page_table.?,
-            @intFromPtr(dest),
+            dest,
             src_addr,
             len,
         );

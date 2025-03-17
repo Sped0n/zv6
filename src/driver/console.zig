@@ -1,6 +1,7 @@
 const SpinLock = @import("../lock/SpinLock.zig");
 const Process = @import("../process/Process.zig");
 const uart = @import("uart.zig");
+const File = @import("../fs/File.zig");
 
 const backspace = 0x08;
 const delete = 0x7f;
@@ -31,21 +32,25 @@ pub fn putChar(char: u8) void {
 }
 
 ///user write()s to the console go here.
-pub fn write(is_user_src: bool, src_addr: u64, n: u32) u32 {
+pub fn write(is_user_src: bool, src_addr: u64, n: u32) ?u32 {
     var i: u32 = 0;
 
     while (i < n) : (i += 1) {
         var char: u8 = 0;
-        if (!Process.eitherCopyIn(
+        Process.eitherCopyIn(
             @ptrCast(&char),
             is_user_src,
             src_addr + i,
             1,
-        )) break;
+        ) catch break;
         uart.putChar(char);
     }
 
-    return i;
+    if (i == 0 and i != n) {
+        return null;
+    } else {
+        return i;
+    }
 }
 
 // user read()s from the console go here.
@@ -92,12 +97,12 @@ pub fn read(is_user_dst: bool, dest_addr: u64, n: u32) ?u32 {
 
         // copy the input byte to the user-space buffer.
         const char_buffer = char;
-        if (Process.eitherCopyOut(
+        Process.eitherCopyOut(
             is_user_dst,
             dest_addr,
             @ptrCast(&char_buffer),
             1,
-        )) break;
+        ) catch break;
     }
 
     return n - local_n;
@@ -144,5 +149,8 @@ pub fn init() void {
     lock.init("cons");
     uart.init();
 
-    // TODO: devsw
+    // connect read and write system calls
+    // to console.read and console.write.
+    File.device_switches[File.console].read = &read;
+    File.device_switches[File.console].write = &write;
 }
