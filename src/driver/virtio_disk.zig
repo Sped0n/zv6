@@ -128,12 +128,12 @@ pub fn init() void {
     virtio.MMIO.write(.queue_num, virtio.num);
 
     // write to physical addresses.
-    const dest_addr = @intFromPtr(disk.desc);
-    virtio.MMIO.write(.queue_desc_low, @truncate(dest_addr));
-    virtio.MMIO.write(.queue_desc_high, @truncate(dest_addr >> 32));
+    const desc_addr = @intFromPtr(disk.desc);
+    virtio.MMIO.write(.queue_desc_low, @truncate(desc_addr));
+    virtio.MMIO.write(.queue_desc_high, @truncate(desc_addr >> 32));
     const avail_addr = @intFromPtr(disk.avail);
     virtio.MMIO.write(.driver_desc_low, @truncate(avail_addr));
-    virtio.MMIO.write(.driver_desc_high, @truncate(dest_addr >> 32));
+    virtio.MMIO.write(.driver_desc_high, @truncate(avail_addr >> 32));
     const used_addr = @intFromPtr(disk.used);
     virtio.MMIO.write(.driver_desc_low, @truncate(used_addr));
     virtio.MMIO.write(.driver_desc_high, @truncate(used_addr >> 32));
