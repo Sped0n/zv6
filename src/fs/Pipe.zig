@@ -18,22 +18,13 @@ write_open: bool,
 const Self = @This();
 
 pub const Error = error{
-    FileAllocFailed,
     NotOpened,
     ProcIsKilled,
 };
 
 pub fn alloc(file_0: **File, file_1: **File) !void {
-    if (File.alloc()) |file_ptr| {
-        file_0.* = file_ptr;
-    } else return Error.FileAllocFailed;
-
-    if (File.alloc()) |file_ptr| {
-        file_1.* = file_ptr;
-    } else {
-        file_0.*.close();
-        return Error.FileAllocFailed;
-    }
+    file_0.* = try File.alloc();
+    file_1.* = try File.alloc();
 
     const pipe: *Self = @ptrCast(@alignCast(kmem.alloc() catch |e| {
         file_0.*.close();

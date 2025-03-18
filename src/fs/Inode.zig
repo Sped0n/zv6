@@ -529,20 +529,18 @@ pub fn dirLookUp(self: *Self, name: []const u8, offset_ptr: ?*u32) ?*Self {
     const step = @sizeOf(DirEntry);
 
     while (offset < self.dinode.size) : (offset += step) {
-        const read_size = self.read(
-            false,
-            @intFromPtr(&dir_entry),
-            offset,
-            step,
-        ) catch |e| panic(
+        assert(
+            self.read(
+                false,
+                @intFromPtr(&dir_entry),
+                offset,
+                step,
+            ) catch |e| panic(
+                @src(),
+                "read failed with {s}",
+                .{@errorName(e)},
+            ) == step,
             @src(),
-            "read failed with {s}",
-            .{@errorName(e)},
-        );
-        if (read_size != step) panic(
-            @src(),
-            "read size mismatch, expected {d}(got {d})",
-            .{ step, read_size },
         );
 
         if (dir_entry.inum == 0) continue;
@@ -570,22 +568,20 @@ pub fn dirLink(self: *Self, name: []const u8, inum: u32) !void {
     var dir_entry: DirEntry = undefined;
     const step: u32 = @sizeOf(DirEntry);
     while (offset < self.dinode.size) : (offset += step) {
-        const read_size = self.read(
-            false,
-            @intFromPtr(&dir_entry),
-            offset,
-            step,
-        ) catch |e| {
-            panic(
-                @src(),
-                "dirlink read failed with {s}",
-                .{@errorName(e)},
-            );
-        };
-        if (read_size != step) panic(
+        assert(
+            self.read(
+                false,
+                @intFromPtr(&dir_entry),
+                offset,
+                step,
+            ) catch |e| {
+                panic(
+                    @src(),
+                    "dirlink read failed with {s}",
+                    .{@errorName(e)},
+                );
+            } == step,
             @src(),
-            "dirlink read size mismatch, expected {d}(got {d})",
-            .{ step, read_size },
         );
 
         if (dir_entry.inum == 0) break;

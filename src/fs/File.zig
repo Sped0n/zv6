@@ -22,9 +22,10 @@ major: i16,
 const Self = @This();
 
 pub const Error = error{
+    OutOfSpace,
     NotInodeOrDevice,
-    PermissionNotValid,
-    DeviceMajorNotValid,
+    PermissionDenied,
+    DeviceMajorOutOfRange,
     DevswMethodIsNull,
     DevswMethodFailed,
     WrittenLenMismatch,
@@ -65,8 +66,8 @@ pub fn init() void {
     file_table.lock.init("ftable");
 }
 
-///Allocate a file structure/
-pub fn alloc() ?*Self {
+///Allocate a file structure.
+pub fn alloc() !*Self {
     file_table.lock.acquire();
     defer file_table.lock.release();
 
@@ -78,7 +79,7 @@ pub fn alloc() ?*Self {
         }
     }
 
-    return null;
+    return Error.OutOfSpace;
 }
 
 ///Increment ref count for file f.
@@ -158,7 +159,7 @@ pub fn stat(self: *Self, user_virt_addr: u64) !void {
 
 ///Read from file.
 pub fn read(self: *Self, user_virt_addr: u64, len: u32) !u32 {
-    if (!self.readable) return Error.PermissionNotValid;
+    if (!self.readable) return Error.PermissionDenied;
 
     switch (self.type) {
         .pipe => {
@@ -167,7 +168,7 @@ pub fn read(self: *Self, user_virt_addr: u64, len: u32) !u32 {
         },
         .device => {
             if (self.major < 0 or
-                self.major >= param.n_dev) return Error.DeviceMajorNotValid;
+                self.major >= param.n_dev) return Error.DeviceMajorOutOfRange;
 
             if (device_switches[self.major].read) |_read| {
                 return _read(
@@ -204,7 +205,7 @@ pub fn read(self: *Self, user_virt_addr: u64, len: u32) !u32 {
 
 ///Write to file.
 pub fn write(self: *Self, user_virt_addr: u64, len: u32) !u32 {
-    if (!self.writable) return Error.PermissionNotValid;
+    if (!self.writable) return Error.PermissionDenied;
 
     switch (self.type) {
         .pipe => {
