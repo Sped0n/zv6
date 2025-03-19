@@ -642,7 +642,7 @@ pub fn copyIn(
 ///until a '\0', or max.
 pub fn copyInStr(
     page_table: riscv.PageTable,
-    dst: [*]u8,
+    dst: [*c]u8,
     src_virt_addr: u64,
     max: u64,
 ) !void {
