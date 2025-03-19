@@ -22,10 +22,10 @@ pub fn memMove(dst: [*]u8, src: [*]const u8, n: usize) void {
     }
 }
 
-pub fn safeStrCopy(dst: *[fs.dir_size]u8, src: []const u8) void {
-    const len = @min(src.len, dst.len - 1);
-    @memcpy(dst[0..len], src[0..len]);
-    dst[len] = 0; // Null-terminate at the end of the copied region
+pub fn safeStrCopy(dst: [*]u8, src: []const u8, len: usize) void {
+    const l = @min(len, dst.len) - 1;
+    @memcpy(dst[0..l], src[0..l]);
+    dst[l] = 0; // Null-terminate at the end of the copied region
 }
 
 ///https://ziglang.org/download/0.14.0/release-notes.html#toc-Synchronize-External-Operations
