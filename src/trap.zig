@@ -9,6 +9,7 @@ const printf = @import("printf.zig").printf;
 const Cpu = @import("process/Cpu.zig");
 const Process = @import("process/Process.zig");
 const riscv = @import("riscv.zig");
+const syscall = @import("sys/syscall.zig");
 
 // trampoline.S
 const trampoline = @extern(*u8, .{ .name = "trampoline" });
@@ -20,8 +21,8 @@ extern fn kernelVec() void;
 
 const WhichDev = enum { not_recognize, other_dev, timer_intr };
 
-var ticks_lock: SpinLock = undefined;
-var ticks: u32 = 0;
+pub var ticks_lock: SpinLock = undefined;
+pub var ticks: u32 = 0;
 
 pub fn init() void {
     ticks_lock.init("time");
@@ -69,7 +70,7 @@ pub fn userTrap() void {
         // so enable only now that we're done with those registers.
         riscv.intrOn();
 
-        // TODO: syscall();
+        syscall.syscall();
     } else {
         which_dev = devIntr();
 
