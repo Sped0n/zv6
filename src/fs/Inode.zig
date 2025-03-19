@@ -587,7 +587,7 @@ pub fn dirLink(self: *Self, name: []const u8, inum: u32) !void {
         if (dir_entry.inum == 0) break;
     }
 
-    misc.safeStrCopy(&dir_entry.name, name);
+    misc.safeStrCopy(&dir_entry.name, name, dir_entry.name.len);
     dir_entry.inum = inum;
 
     const write_size = try self.write(

@@ -17,7 +17,7 @@ writable: bool,
 pipe: ?*Pipe,
 inode: ?*Inode,
 offset: u32,
-major: i16,
+major: u16,
 
 const Self = @This();
 
@@ -25,7 +25,7 @@ pub const Error = error{
     OutOfSpace,
     NotInodeOrDevice,
     PermissionDenied,
-    DeviceMajorOutOfRange,
+    MajorOutOfRange,
     DevswMethodIsNull,
     DevswMethodFailed,
     WrittenLenMismatch,
@@ -167,8 +167,7 @@ pub fn read(self: *Self, user_virt_addr: u64, len: u32) !u32 {
             self.pipe.?.read(user_virt_addr, len);
         },
         .device => {
-            if (self.major < 0 or
-                self.major >= param.n_dev) return Error.DeviceMajorOutOfRange;
+            if (self.major >= param.n_dev) return Error.MajorOutOfRange;
 
             if (device_switches[self.major].read) |_read| {
                 return _read(
@@ -213,8 +212,7 @@ pub fn write(self: *Self, user_virt_addr: u64, len: u32) !u32 {
             self.pipe.?.write(user_virt_addr, len);
         },
         .device => {
-            if (self.major < 0 or
-                self.major >= param.n_dev) return Error.DeviceMajorNotValid;
+            if (self.major >= param.n_dev) return Error.MajorOutOfRange;
 
             if (device_switches[self.major].write) |_write| {
                 return _write(
