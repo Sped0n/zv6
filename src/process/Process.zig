@@ -92,8 +92,8 @@ const Self = @This();
 
 pub const Error = error{
     CurrentProcIsNull,
-    NoProcAvailable,
     NoChildAvailable,
+    PidOutOfRange,
 };
 
 ///Allocate a page for each process's kernel stack.
@@ -341,7 +341,7 @@ pub fn fork() !u32 {
     }
     new_proc.cwd = proc.cwd.?.dup();
 
-    misc.safeStrCopy(&new_proc.name, mem.sliceTo(&proc.name, 0));
+    misc.safeStrCopy(&new_proc.name, mem.sliceTo(&proc.name, 0), new_proc.name.len);
 
     const pid = new_proc.pid;
 
@@ -568,7 +568,7 @@ pub fn wakeUp(chan_addr: u64) void {
 ///Kill the process with the given pid.
 ///The victim won't exit until it tries to return
 ///to user space (see userTrap() in trap.zig).
-pub fn kill(pid: u32) bool {
+pub fn kill(pid: u32) !void {
     for (0..param.n_proc) |i| {
         const proc = procs[i];
 
@@ -580,9 +580,9 @@ pub fn kill(pid: u32) bool {
         proc.killed = true;
         // Wake process from sleep().
         if (proc.state == .sleeping) proc.state = .runnable;
-        return true;
+        return;
     }
-    return false;
+    return Error.PidOutOfRange;
 }
 
 pub fn setKilled(self: *Self) void {
