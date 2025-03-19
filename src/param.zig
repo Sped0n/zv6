@@ -11,3 +11,4 @@ pub const log_size = (max_opblocks * 3); // max data blocks in on-disk log
 pub const n_buf = (max_opblocks * 3); // size of disk block cache
 pub const fs_size = 2000; // size of file system in blocks
 pub const max_path = 128; // maximum file path name
+pub const user_stack = 1; // user stack pages
