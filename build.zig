@@ -16,7 +16,7 @@ const qemu_run_args = [_][]const u8{
     "-bios",
     "none",
     "-kernel",
-    "zig-out/bin/kernel",
+    "zig-out/kernel/kernel",
     "-m",
     "128M",
     "-cpu",
@@ -37,9 +37,64 @@ const qemu_gdb_args = qemu_run_args ++ [_][]const u8{
     "-S", // Freeze CPU at startup
 };
 
-pub fn build(b: *std.Build) void {
+const cflags = [_][]const u8{
+    "-Wall",
+    "-Werror",
+    "-O",
+    "-fno-omit-frame-pointer",
+    "-ggdb",
+    "-gdwarf-2",
+    "-MD",
+    "-mcmodel=medany",
+    "-fno-common",
+    "-nostdlib",
+    "-mno-relax",
+    "-fno-builtin-strncpy",
+    "-fno-builtin-strncmp",
+    "-fno-builtin-memset",
+    "-fno-builtin-memmove",
+    "-fno-builtin-memcmp",
+    "-fno-builtin-log",
+    "-fno-builtin-bzero",
+    "-fno-builtin-strchr",
+    "-fno-builtin-exit",
+    "-fno-builtin-malloc",
+    "-fno-builtin-putc",
+    "-fno-builtin-free",
+    "-fno-builtin-memcpy",
+    "-Wno-main",
+    "-fno-builtin-prtinf",
+    "-fno-builtin-fprintf",
+    "-fno-builtin-vprintf",
+};
+
+const user_progs = [_][]const u8{
+    "cat",
+    "echo",
+    "forktest",
+    "grep",
+    "init",
+    "kill",
+    "ln",
+    "ls",
+    "mkdir",
+    "rm",
+    "sh",
+    "stressfs",
+    "usertests",
+    "grind",
+    "wc",
+    "zombie",
+};
+
+pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
-    const target = b.standardTargetOptions(.{});
+    const native = b.standardTargetOptions(.{});
+    const rv64 = b.resolveTargetQuery(.{
+        .cpu_arch = .riscv64,
+        .os_tag = .freestanding,
+        .abi = .none,
+    });
 
     // step --------------------------------------------------------------------
     const mkfs_build_step = b.step(
@@ -49,6 +104,13 @@ pub fn build(b: *std.Build) void {
     const mkfs_run_step = b.step(
         "mkfs-run",
         "Make fs image",
+    );
+
+    const gen_usys_step = b.step("gen-usys", "Generate usys.S");
+    const initcode_step = b.step("initcode", "Build initcode binary");
+    const user_build_step = b.step(
+        "user",
+        "Build user programs",
     );
 
     const kernel_build_step = b.step(
@@ -72,7 +134,7 @@ pub fn build(b: *std.Build) void {
     // mkfs ------------------------------------------------------------------
     const mkfs_module = b.createModule(.{
         .root_source_file = null,
-        .target = target,
+        .target = native,
         .optimize = optimize,
     });
     mkfs_module.addIncludePath(b.path("."));
@@ -90,7 +152,14 @@ pub fn build(b: *std.Build) void {
             .root_module = mkfs_module,
         });
 
-        const build_cmd = b.addInstallArtifact(mkfs, .{});
+        const build_cmd = b.addInstallArtifact(
+            mkfs,
+            .{
+                .dest_dir = .{
+                    .override = .{ .custom = "mkfs" },
+                },
+            },
+        );
         mkfs_build_step.dependOn(&build_cmd.step);
 
         const run_cmd = b.addRunArtifact(mkfs);
@@ -101,14 +170,129 @@ pub fn build(b: *std.Build) void {
         }
     }
 
+    // usys --------------------------------------------------------------------
+    const gen_usys_cmd = b.addSystemCommand(&[_][]const u8{
+        "perl",
+        "user/usys.pl",
+    });
+    gen_usys_cmd.setCwd(b.path("."));
+    gen_usys_step.dependOn(
+        &b.addInstallFile(
+            gen_usys_cmd.captureStdOut(),
+            "../user/usys.S",
+        ).step,
+    );
+    user_build_step.dependOn(gen_usys_step);
+
+    // user programs -----------------------------------------------------------
+    const ulib_module = b.createModule(.{
+        .root_source_file = null,
+        .target = rv64,
+        .optimize = optimize,
+    });
+    ulib_module.addIncludePath(b.path("."));
+    ulib_module.addCSourceFile(.{
+        .file = b.path("user/ulib.c"),
+        .flags = &cflags,
+    });
+    ulib_module.addCSourceFile(.{
+        .file = b.path("user/printf.c"),
+        .flags = &cflags,
+    });
+    ulib_module.addCSourceFile(.{
+        .file = b.path("user/umalloc.c"),
+        .flags = &cflags,
+    });
+    ulib_module.addAssemblyFile(b.path("user/usys.S"));
+
+    var prog_paths = std.ArrayList([]const u8).init(b.allocator);
+
+    {
+        const ulib = b.addObject(.{
+            .name = "ulib",
+            .root_module = ulib_module,
+        });
+
+        for (user_progs) |prog_name| {
+            const prog_module = b.createModule(.{
+                .root_source_file = null,
+                .target = rv64,
+                .optimize = optimize,
+                .strip = true,
+            });
+            prog_module.addObject(ulib);
+            prog_module.addIncludePath(b.path("."));
+            prog_module.addCSourceFile(.{
+                .file = b.path(try std.mem.concat(
+                    b.allocator,
+                    u8,
+                    &[_][]const u8{ "user/", prog_name, ".c" },
+                )),
+                .flags = &cflags,
+            });
+
+            const prog = b.addExecutable(.{
+                .name = try std.mem.concat(
+                    b.allocator,
+                    u8,
+                    &[_][]const u8{ "_", prog_name },
+                ),
+                .root_module = prog_module,
+            });
+            prog.link_function_sections = true;
+            prog.link_data_sections = true;
+            prog.link_gc_sections = true;
+            prog.setLinkerScript(b.path("user/user.ld"));
+            prog.entry = .{ .symbol_name = "main" };
+            user_build_step.dependOn(&b.addInstallArtifact(
+                prog,
+                .{
+                    .dest_dir = .{
+                        .override = .{ .custom = "user" },
+                    },
+                },
+            ).step);
+
+            prog_paths.append(b.getInstallPath(
+                .{ .custom = "user" },
+                try std.mem.concat(
+                    b.allocator,
+                    u8,
+                    &[_][]const u8{ "_", prog_name },
+                ),
+            )) catch unreachable;
+        }
+    }
+
+    // initcode ----------------------------------------------------------------
+    const initcode_module = b.createModule(.{
+        .root_source_file = null,
+        .target = rv64,
+        .optimize = optimize,
+    });
+    initcode_module.addAssemblyFile(b.path("user/initcode.S"));
+    initcode_module.addIncludePath(b.path("."));
+
+    {
+        const initcode = b.addExecutable(.{
+            .name = "initcode",
+            .root_module = initcode_module,
+        });
+        initcode.entry = .{ .symbol_name = "start" };
+        const initcode_bin = b.addObjCopy(
+            initcode.getEmittedBin(),
+            .{ .format = .bin },
+        );
+        initcode_step.dependOn(&b.addInstallBinFile(
+            initcode_bin.getOutput(),
+            "../user/initcode",
+        ).step);
+    }
+
     // kernel ------------------------------------------------------------------
     const kernel_module = b.addModule("kernel", .{
         .root_source_file = b.path("kernel/start.zig"),
-        .target = b.resolveTargetQuery(.{
-            .cpu_arch = .riscv64,
-            .os_tag = .freestanding,
-            .abi = .none,
-        }),
+        .target = rv64,
         .optimize = optimize,
         .code_model = .medium,
     });
@@ -125,11 +309,22 @@ pub fn build(b: *std.Build) void {
         });
         // for std.fmt.format would crash if want_lto is false
         kernel.want_lto = true;
+        kernel.link_function_sections = true;
+        kernel.link_data_sections = true;
+        kernel.link_gc_sections = true;
         kernel.setLinkerScript(b.path("kernel/kernel.ld"));
         kernel.entry = .{ .symbol_name = "_entry" };
 
-        const build_cmd = b.addInstallArtifact(kernel, .{});
+        const build_cmd = b.addInstallArtifact(
+            kernel,
+            .{
+                .dest_dir = .{
+                    .override = .{ .custom = "kernel" },
+                },
+            },
+        );
         kernel_build_step.dependOn(&build_cmd.step);
+        kernel_build_step.dependOn(initcode_step);
 
         const run_cmd = b.addSystemCommand(&qemu_run_args);
         run_cmd.step.dependOn(kernel_build_step);
