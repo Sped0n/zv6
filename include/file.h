@@ -1,5 +1,3 @@
-#pragma once
-
 #include "include/fs.h"
 #include "include/param.h"
 #include "include/sleeplock.h"

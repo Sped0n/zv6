@@ -1,5 +1,3 @@
-#pragma once
-
 #include "include/types.h"
 
 // On-disk file system format.

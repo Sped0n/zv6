@@ -1,4 +1,3 @@
-#pragma once
 #include "include/param.h"
 #include "include/riscv.h"
 #include "include/spinlock.h"

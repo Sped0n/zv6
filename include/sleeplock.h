@@ -1,4 +1,3 @@
-#pragma once
 #include "include/spinlock.h"
 #include "include/types.h"
 
