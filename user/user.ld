@@ -8,6 +8,7 @@ SECTIONS
     *(.text .text.*)
   }
 
+  . = ALIGN(0x1000);
   .rodata : {
     . = ALIGN(16);
     *(.srodata .srodata.*) /* do not need to distinguish this from .rodata */

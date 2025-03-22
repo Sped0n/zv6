@@ -188,7 +188,8 @@ pub fn build(b: *std.Build) !void {
     const ulib_module = b.createModule(.{
         .root_source_file = null,
         .target = rv64,
-        .optimize = optimize,
+        .optimize = .ReleaseSmall,
+        .code_model = .medium,
     });
     ulib_module.addIncludePath(b.path("."));
     ulib_module.addCSourceFile(.{
@@ -208,7 +209,7 @@ pub fn build(b: *std.Build) !void {
     var prog_paths = std.ArrayList([]const u8).init(b.allocator);
 
     {
-        const ulib = b.addObject(.{
+        const ulib = b.addStaticLibrary(.{
             .name = "ulib",
             .root_module = ulib_module,
         });
@@ -217,10 +218,10 @@ pub fn build(b: *std.Build) !void {
             const prog_module = b.createModule(.{
                 .root_source_file = null,
                 .target = rv64,
-                .optimize = optimize,
-                .strip = true,
+                .optimize = .ReleaseSmall,
+                .code_model = .medium,
             });
-            prog_module.addObject(ulib);
+            prog_module.linkLibrary(ulib);
             prog_module.addIncludePath(b.path("."));
             prog_module.addCSourceFile(.{
                 .file = b.path(try std.mem.concat(
@@ -239,10 +240,8 @@ pub fn build(b: *std.Build) !void {
                 ),
                 .root_module = prog_module,
             });
-            prog.link_function_sections = true;
-            prog.link_data_sections = true;
-            prog.link_gc_sections = true;
             prog.setLinkerScript(b.path("user/user.ld"));
+            prog.link_z_max_page_size = 4096;
             prog.entry = .{ .symbol_name = "main" };
             user_build_step.dependOn(&b.addInstallArtifact(
                 prog,
@@ -265,29 +264,24 @@ pub fn build(b: *std.Build) !void {
     }
 
     // initcode ----------------------------------------------------------------
-    const initcode_module = b.createModule(.{
+    const initcode_object = b.addObject(.{
+        .name = "initcode",
         .root_source_file = null,
         .target = rv64,
         .optimize = optimize,
     });
-    initcode_module.addAssemblyFile(b.path("user/initcode.S"));
-    initcode_module.addIncludePath(b.path("."));
-
-    {
-        const initcode = b.addExecutable(.{
-            .name = "initcode",
-            .root_module = initcode_module,
-        });
-        initcode.entry = .{ .symbol_name = "start" };
-        const initcode_bin = b.addObjCopy(
-            initcode.getEmittedBin(),
-            .{ .format = .bin },
-        );
-        initcode_step.dependOn(&b.addInstallBinFile(
-            initcode_bin.getOutput(),
-            "../user/initcode",
-        ).step);
-    }
+    initcode_object.addAssemblyFile(b.path("user/initcode.S"));
+    initcode_object.addIncludePath(b.path("."));
+    initcode_object.link_z_max_page_size = 4096;
+    initcode_object.entry = .{ .symbol_name = "start" };
+    const initcode_bin = b.addObjCopy(
+        initcode_object.getEmittedBin(),
+        .{ .format = .bin },
+    );
+    initcode_step.dependOn(&b.addInstallBinFile(
+        initcode_bin.getOutput(),
+        "../user/initcode",
+    ).step);
 
     // kernel ------------------------------------------------------------------
     const kernel_module = b.addModule("kernel", .{
