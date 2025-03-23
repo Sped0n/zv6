@@ -24,6 +24,7 @@ pub fn main() void {
         printf.printf("{*}\n", .{&main});
         printf.printf("{{zv6}} {s}\n", .{"hello world"});
         kmem.init();
+
         vm.kvmInit();
         vm.kvmInitHart();
         Process.init();
@@ -35,6 +36,7 @@ pub fn main() void {
         Inode.init();
         File.init();
         virtio_disk.init();
+        Process.userInit();
 
         printf.printf("hart 0 init\n", .{});
 

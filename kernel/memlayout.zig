@@ -38,20 +38,11 @@ pub const clint_mtime: *u64 = @ptrFromInt(clint + 0xBFF8);
 pub const plic = 0x0c000000;
 pub const plic_priority = plic + 0x0;
 pub const plic_pending = plic + 0x1000;
-pub inline fn plicMEnable(hart: u64) u64 {
-    return plic + 0x2000 + hart * 0x100;
-}
 pub inline fn plicSEnable(hart: u64) u64 {
     return plic + 0x2080 + hart * 0x100;
 }
-pub inline fn plicMPriority(hart: u64) u64 {
-    return plic + 0x200000 + hart * 0x2000;
-}
 pub inline fn plicSPriority(hart: u64) u64 {
     return plic + 0x201000 + hart * 0x2000;
-}
-pub inline fn plicMClaim(hart: u64) u64 {
-    return plic + 0x200004 + hart * 0x2000;
 }
 pub inline fn plicSClaim(hart: u64) u64 {
     return plic + 0x201004 + hart * 0x2000;
