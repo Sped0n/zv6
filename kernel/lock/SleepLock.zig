@@ -6,7 +6,7 @@ locked: bool,
 lock: SpinLock,
 
 name: [*:0]const u8,
-pid: i32,
+pid: u32,
 
 const Self = @This();
 
