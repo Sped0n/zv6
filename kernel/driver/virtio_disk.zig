@@ -47,7 +47,7 @@ var disk = struct {
     .desc = undefined,
     .avail = undefined,
     .used = undefined,
-    .free = [_]bool{true} ** virtio.num,
+    .free = [_]bool{false} ** virtio.num,
     .used_index = 0,
     .info = [_]Info{Info{ .buf = null, .status = 0 }} ** virtio.num,
     .ops = [_]virtio.BlockRequest{virtio.BlockRequest{
@@ -102,6 +102,13 @@ pub fn init() void {
     // initialize queue 0.
     virtio.MMIO.write(.queue_sel, 0);
 
+    // ensure queue 0 is not in use
+    if (virtio.MMIO.read(.queue_ready) != 0) panic(
+        @src(),
+        "virtio disk should not be ready",
+        .{},
+    );
+
     // check maximum queue size.
     const max = virtio.MMIO.read(.queue_num_max);
     if (max == 0) panic(@src(), "no queue 0", .{});
@@ -112,15 +119,27 @@ pub fn init() void {
     );
 
     // allocate and zero queue memory.
-    const desc_page = kmem.alloc() catch panic(@src(), "desc kalloc failed", .{});
+    const desc_page = kmem.alloc() catch panic(
+        @src(),
+        "desc kalloc failed",
+        .{},
+    );
     @memset(desc_page, 0);
     disk.desc = @ptrCast(@alignCast(desc_page));
 
-    const avail_page = kmem.alloc() catch panic(@src(), "avail kalloc failed", .{});
+    const avail_page = kmem.alloc() catch panic(
+        @src(),
+        "avail kalloc failed",
+        .{},
+    );
     @memset(avail_page, 0);
     disk.avail = @ptrCast(@alignCast(avail_page));
 
-    const used_page = kmem.alloc() catch panic(@src(), "used kalloc failed", .{});
+    const used_page = kmem.alloc() catch panic(
+        @src(),
+        "used kalloc failed",
+        .{},
+    );
     @memset(used_page, 0);
     disk.used = @ptrCast(@alignCast(used_page));
 
@@ -135,11 +154,14 @@ pub fn init() void {
     virtio.MMIO.write(.driver_desc_low, @truncate(avail_addr));
     virtio.MMIO.write(.driver_desc_high, @truncate(avail_addr >> 32));
     const used_addr = @intFromPtr(disk.used);
-    virtio.MMIO.write(.driver_desc_low, @truncate(used_addr));
-    virtio.MMIO.write(.driver_desc_high, @truncate(used_addr >> 32));
+    virtio.MMIO.write(.device_desc_low, @truncate(used_addr));
+    virtio.MMIO.write(.device_desc_high, @truncate(used_addr >> 32));
 
     // queue is ready.
     virtio.MMIO.write(.queue_ready, 0x1);
+
+    // all NUM descriptors start out unused.
+    for (0..virtio.num) |i| disk.free[i] = true;
 
     // tell device we're completely ready.
     status |= virtio.ConfigStatus.driver_ok;
@@ -171,7 +193,7 @@ fn freeDesc(i: usize) void {
 
     disk.free[i] = true;
 
-    Process.wakeUp(@intFromPtr(&disk.desc[0]));
+    Process.wakeUp(@intFromPtr(disk.desc));
 }
 
 ///free a chain of descriptors
@@ -216,10 +238,10 @@ pub fn diskReadWrite(buf_ptr: *Buf, is_write: bool) void {
     // allocate the three descriptors.
     var indexes = [_]usize{ 0, 0, 0 };
     while (true) {
-        if (!allocThreeDescs(&indexes)) {
+        if (allocThreeDescs(&indexes)) {
             break;
         }
-        Process.sleep(@intFromPtr(&disk.desc[0]), &disk.lock);
+        Process.sleep(@intFromPtr(disk.desc), &disk.lock);
     }
 
     // format the three descriptors.
@@ -227,26 +249,22 @@ pub fn diskReadWrite(buf_ptr: *Buf, is_write: bool) void {
 
     var req: *virtio.BlockRequest = &disk.ops[indexes[0]];
 
-    if (is_write) {
-        req.type = .out; // write the disk
-    } else {
-        req.type = .in; // read the disk
-    }
+    req.type = if (is_write) .out else .in;
     req.reserved = 0;
     req.sector = sector;
 
     disk.desc[indexes[0]].addr = @intFromPtr(req);
-    disk.desc[indexes[0]].len = @sizeOf(virtio.BlockRequest);
+    disk.desc[indexes[0]].len = @sizeOf(@TypeOf(req.*));
     disk.desc[indexes[0]].flags = .next;
     disk.desc[indexes[0]].next = @intCast(indexes[1]);
 
-    disk.desc[indexes[1]].addr = @intFromPtr(&buf_ptr.data[0]);
+    disk.desc[indexes[1]].addr = @intFromPtr(&buf_ptr.data);
     disk.desc[indexes[1]].len = fs.block_size;
     disk.desc[indexes[1]].flags = if (is_write) .next else .next_and_write;
     disk.desc[indexes[1]].next = @intCast(indexes[2]);
 
     disk.info[indexes[0]].status = 0xff; // device writes 0 on success
-    disk.desc[indexes[2]].addr = @intFromPtr(&disk.info[indexes[0]].status);
+    disk.desc[indexes[2]].addr = @intFromPtr(&(disk.info[indexes[0]].status));
     disk.desc[indexes[2]].len = 1;
     disk.desc[indexes[2]].flags = .write; // device writes the status
     disk.desc[indexes[2]].next = 0;
@@ -256,7 +274,7 @@ pub fn diskReadWrite(buf_ptr: *Buf, is_write: bool) void {
     disk.info[indexes[0]].buf = buf_ptr;
 
     // tell the device the first index in our chain of descriptors.
-    disk.avail.ring[disk.avail.index % virtio.num] = indexes[0];
+    disk.avail.ring[disk.avail.index % virtio.num] = @intCast(indexes[0]);
 
     fence();
     // tell the device another avail ring entry is available.
@@ -264,6 +282,8 @@ pub fn diskReadWrite(buf_ptr: *Buf, is_write: bool) void {
     fence();
 
     virtio.MMIO.write(.queue_notify, 0); // value is queue number
+
+    // panic(@src(), "hello", .{});
 
     // Wait for intr() to say request is finished.
     while (buf_ptr.owned_by_disk) Process.sleep(
@@ -305,7 +325,7 @@ pub fn intr() void {
             buf.owned_by_disk = false;
             Process.wakeUp(@intFromPtr(buf));
         } else {
-            panic(@src(), "buf is null", .{});
+            panic(@src(), "expect a pre-stored buf channel", .{});
         }
     }
 }
