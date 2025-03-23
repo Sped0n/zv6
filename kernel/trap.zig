@@ -42,15 +42,14 @@ pub fn userTrap() void {
 
     // send interrupt and exceptions to kernelTrap(),
     // since we're now in the kernel.
-    riscv.stvec.write(@intFromPtr(kernelVec));
+    riscv.stvec.write(@intFromPtr(&kernelVec));
 
     const proc = Process.current() catch panic(
         @src(),
         "current proc is null",
         .{},
     );
-    assert(proc.trap_frame != null, @src());
-    const trap_frame = proc.trap_frame.?;
+    const trap_frame = proc.trap_frame;
 
     // save user program counter
     trap_frame.epc = riscv.sepc.read();
@@ -60,7 +59,7 @@ pub fn userTrap() void {
     if (riscv.scause.read() == 8) {
         // system call
 
-        if (proc.isKilled()) proc.exit(-1);
+        if (proc.isKilled()) Process.exit(-1);
 
         // spec points to the ecall instruction,
         // but we want to return to the next instruction.
@@ -81,10 +80,10 @@ pub fn userTrap() void {
         }
     }
 
-    if (proc.isKilled()) proc.exit(-1);
+    if (proc.isKilled()) Process.exit(-1);
 
     // give up the CPU if this is a timer interrupt.
-    if (which_dev == .timer_intr) proc.yield();
+    if (which_dev == .timer_intr) Process.yield();
 
     userTrapRet();
 }
@@ -96,7 +95,6 @@ pub fn userTrapRet() void {
         "current proc is null",
         .{},
     );
-    assert(proc.trap_frame != null, @src());
     assert(proc.page_table != null, @src());
 
     // we're about to switch the destination of traps from
@@ -114,10 +112,10 @@ pub fn userTrapRet() void {
 
     // set up trapframe values that uservec will need when
     // the process next traps into the kernel.
-    const trap_frame = proc.trap_frame.?;
+    const trap_frame = proc.trap_frame;
     trap_frame.kernel_satp = riscv.satp.read(); // kernel page table
     trap_frame.kernel_sp = proc.kstack + riscv.pg_size; // process's kernel stack
-    trap_frame.kernel_trap = @intFromPtr(userTrap);
+    trap_frame.kernel_trap = @intFromPtr(&userTrap);
     trap_frame.kernel_hartid = riscv.tp.read(); // hartid for Cpu.id()
 
     // set up the registers that trampoline.S's sret will use
