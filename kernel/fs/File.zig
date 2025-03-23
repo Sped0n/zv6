@@ -29,6 +29,7 @@ pub const Error = error{
     DevswMethodIsNull,
     DevswMethodFailed,
     WrittenLenMismatch,
+    InodeIsNull,
 };
 
 const DeviceSwitch = struct {
@@ -164,14 +165,14 @@ pub fn read(self: *Self, user_virt_addr: u64, len: u32) !u32 {
     switch (self.type) {
         .pipe => {
             assert(self.pipe != null, @src());
-            self.pipe.?.read(user_virt_addr, len);
+            return try self.pipe.?.read(user_virt_addr, len);
         },
         .device => {
             if (self.major >= param.n_dev) return Error.MajorOutOfRange;
 
             if (device_switches[self.major].read) |_read| {
                 return _read(
-                    1,
+                    true,
                     user_virt_addr,
                     len,
                 ) orelse return Error.DevswMethodFailed;
@@ -209,14 +210,14 @@ pub fn write(self: *Self, user_virt_addr: u64, len: u32) !u32 {
     switch (self.type) {
         .pipe => {
             assert(self.pipe != null, @src());
-            self.pipe.?.write(user_virt_addr, len);
+            return try self.pipe.?.write(user_virt_addr, len);
         },
         .device => {
             if (self.major >= param.n_dev) return Error.MajorOutOfRange;
 
             if (device_switches[self.major].write) |_write| {
                 return _write(
-                    1,
+                    true,
                     user_virt_addr,
                     len,
                 ) orelse return Error.DevswMethodFailed;
@@ -259,6 +260,8 @@ pub fn write(self: *Self, user_virt_addr: u64, len: u32) !u32 {
                 }
 
                 return len;
+            } else {
+                return Error.InodeIsNull;
             }
         },
         .none => {

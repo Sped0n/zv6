@@ -108,7 +108,7 @@ fn namex(path: []const u8, is_parent: bool, name: *[fs.dir_size]u8) !*Inode {
         }
 
         if (inode_ptr.dirLookUp(
-            mem.sliceTo(&name, 0),
+            mem.sliceTo(name, 0),
             null,
         )) |n| {
             next = n;

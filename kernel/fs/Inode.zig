@@ -14,7 +14,6 @@ const DirEntry = fs.DirEntry;
 const log = @import("log.zig");
 const Stat = @import("stat.zig").Stat;
 const Process = @import("../process/Process.zig");
-const super_block = @import("SuperBlock.zig").super_block;
 const misc = @import("../misc.zig");
 
 // Inodes ----------------------------------------------------------------------
@@ -133,7 +132,7 @@ var inode_table = struct {
         // Recycle an inode entry.
         assert(empty != null, @src());
 
-        inode = empty;
+        inode = empty.?;
         inode.dev = dev;
         inode.inum = inum;
         inode.ref = 1;
@@ -176,25 +175,25 @@ pub fn get(dev: u32, inum: u32) *Self {
 ///Returns an unlocked but allocated and referenced inode,
 ///or null if there is no free inode.
 pub fn alloc(dev: u32, _type: InodeType) ?*Self {
-    for (1..super_block.n_inodes) |inum| {
+    for (1..fs.super_block.n_inodes) |inum| {
         const buf_ptr = bio.read(
             dev,
-            super_block.getInodeBlockNo(@intCast(inum)),
+            fs.super_block.getInodeBlockNo(@intCast(inum)),
         );
         defer bio.release(buf_ptr);
 
         const disk_inode_ptr = &@as(
             [*]DiskInode,
-            @ptrCast(&buf_ptr.data),
+            @ptrCast(@alignCast(&buf_ptr.data)),
         )[inum % fs.inodes_per_block];
         if (disk_inode_ptr.type == .free) { // a free node
             @memset(@as([*]u8, @ptrCast(disk_inode_ptr))[0..@sizeOf(DiskInode)], 0);
             disk_inode_ptr.type = _type;
             log.write(buf_ptr); // mark it allocated on the disk
-            return get(dev, inum);
+            return get(dev, @intCast(inum));
         }
     }
-    printf("Inode.alloc: no inodes\n");
+    printf("Inode.alloc: no inodes\n", .{});
     return null;
 }
 
@@ -205,13 +204,13 @@ pub fn alloc(dev: u32, _type: InodeType) ?*Self {
 pub fn update(self: *Self) void {
     const buf_ptr = bio.read(
         self.dev,
-        super_block.getInodeBlockNo(self.inum),
+        fs.super_block.getInodeBlockNo(self.inum),
     );
     defer bio.release(buf_ptr);
 
     const disk_inode_ptr = &@as(
         [*]DiskInode,
-        @ptrCast(&buf_ptr.data),
+        @ptrCast(@alignCast(&buf_ptr.data)),
     )[self.inum % fs.inodes_per_block];
     disk_inode_ptr.* = self.dinode;
     log.write(buf_ptr);
@@ -239,13 +238,13 @@ pub fn lock(self: *Self) void {
     {
         const buf_ptr = bio.read(
             self.dev,
-            super_block.getInodeBlockNo(self.inum),
+            fs.super_block.getInodeBlockNo(self.inum),
         );
         defer bio.release(buf_ptr);
 
         const disk_inode_ptr = &@as(
             [*]DiskInode,
-            @ptrCast(&buf_ptr.data),
+            @ptrCast(@alignCast(&buf_ptr.data)),
         )[self.inum % fs.inodes_per_block];
         (&self.dinode).* = disk_inode_ptr.*;
     }
@@ -335,7 +334,7 @@ fn bmap(self: *Self, blockno: u32) ?u32 {
         const buf_ptr = bio.read(self.dev, addr);
         defer bio.release(buf_ptr);
 
-        const buf_data: [*]u32 = @ptrCast(&buf_ptr.data);
+        const buf_data: [*]u32 = @ptrCast(@alignCast(&buf_ptr.data));
 
         addr = buf_data[blockno];
         if (addr == 0) {
@@ -368,9 +367,9 @@ pub fn trunc(self: *Self) void {
             );
             defer bio.release(buf_ptr);
 
-            const buf_data: [*]u32 = @ptrCast(&buf_ptr.data);
+            const buf_data: [*]u32 = @ptrCast(@alignCast(&buf_ptr.data));
             for (0..fs.n_indirect) |i| {
-                if (buf_data[i] != 0) bio.free(
+                if (buf_data[i] != 0) fs.block.free(
                     self.dev,
                     self.dinode.addrs[fs.n_direct],
                 );
@@ -380,7 +379,7 @@ pub fn trunc(self: *Self) void {
         self.dinode.addrs[fs.n_direct] = 0;
     }
 
-    self.size = 0;
+    self.dinode.size = 0;
     self.update();
 }
 
@@ -435,12 +434,12 @@ pub fn read(
             local_len - total,
             fs.block_size - modded_local_offset,
         );
-        if (!Process.eitherCopyOut(
+        try Process.eitherCopyOut(
             is_user_dst,
             local_dst_addr,
-            buf_ptr.data[modded_local_offset..],
+            buf_ptr.data[modded_local_offset..].ptr,
             read_len,
-        )) return Error.VMCopyFailed;
+        );
     }
 
     return total;
@@ -470,7 +469,7 @@ pub fn write(
     var total: u32 = 0;
     var write_len: u32 = 0;
     var local_src_addr = src_addr;
-    var result: enum { ok, bmap_failed, vm_copy_failed } = .ok;
+    var _error: ?anyerror = null;
 
     while (total < len) : ({
         total += write_len;
@@ -480,7 +479,7 @@ pub fn write(
         const blockno = self.bmap(
             local_offset / fs.block_size,
         ) orelse {
-            result = .bmap_failed;
+            _error = Error.BMapFailed;
             break;
         };
 
@@ -491,15 +490,15 @@ pub fn write(
             len - total,
             fs.block_size - local_offset % fs.block_size,
         );
-        if (!Process.eitherCopyIn(
-            buf_ptr.data[local_offset % self.block_size ..],
+        Process.eitherCopyIn(
+            buf_ptr.data[local_offset % fs.block_size ..].ptr,
             is_user_src,
             local_src_addr,
             write_len,
-        )) {
-            result = .vm_copy_failed;
+        ) catch |e| {
+            _error = e;
             break;
-        }
+        };
         log.write(buf_ptr);
     }
 
@@ -510,10 +509,10 @@ pub fn write(
     // block to self.dinode.addrs[].
     self.update();
 
-    switch (result) {
-        .ok => return total,
-        .bmap_failed => return Error.BMapFailed,
-        .vm_copy_failed => return Error.VMCopyFailed,
+    if (_error) |e| {
+        return e;
+    } else {
+        return total;
     }
 }
 
@@ -522,7 +521,7 @@ pub fn write(
 ///Look for a directory entry in a directory.
 ///If found, set *poff to byte offset of entry.
 pub fn dirLookUp(self: *Self, name: []const u8, offset_ptr: ?*u32) ?*Self {
-    assert(self.dinode.type == .directory, *@src());
+    assert(self.dinode.type == .directory, @src());
 
     var offset: u32 = 0;
     var dir_entry: DirEntry = undefined;
@@ -545,7 +544,7 @@ pub fn dirLookUp(self: *Self, name: []const u8, offset_ptr: ?*u32) ?*Self {
 
         if (dir_entry.inum == 0) continue;
 
-        if (mem.eql(name, mem.sliceTo(&dir_entry.name, 0))) {
+        if (mem.eql(u8, name, mem.sliceTo(&dir_entry.name, 0))) {
             if (offset_ptr) |p| p.* = offset;
             return get(self.dev, dir_entry.inum);
         }
@@ -588,7 +587,7 @@ pub fn dirLink(self: *Self, name: []const u8, inum: u32) !void {
     }
 
     misc.safeStrCopy(&dir_entry.name, name, dir_entry.name.len);
-    dir_entry.inum = inum;
+    dir_entry.inum = @intCast(inum);
 
     const write_size = try self.write(
         false,

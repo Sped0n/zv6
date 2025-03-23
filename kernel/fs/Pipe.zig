@@ -67,7 +67,7 @@ pub fn close(self: *Self, writable: bool) void {
     if (free_pipe) kmem.free(@ptrCast(self));
 }
 
-pub fn write(self: *Self, virt_addr: u64, len: u32) !void {
+pub fn write(self: *Self, virt_addr: u64, len: u32) !u32 {
     const proc = Process.current() catch panic(
         @src(),
         "current proc is null",
@@ -107,7 +107,7 @@ pub fn write(self: *Self, virt_addr: u64, len: u32) !void {
     return i;
 }
 
-pub fn read(self: *Self, virt_addr: u64, len: u32) !void {
+pub fn read(self: *Self, virt_addr: u64, len: u32) !u32 {
     const proc = Process.current() catch panic(
         @src(),
         "current proc is null",

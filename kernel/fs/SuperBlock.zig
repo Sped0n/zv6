@@ -32,7 +32,9 @@ pub const SuperBlock = extern struct {
 
     pub fn read(self: *Self, dev: u32) void {
         const buf_ptr = bio.read(dev, 1);
-        memMove(@as([*]u8, self), buf_ptr.data, @sizeOf(self.*));
+        defer bio.release(buf_ptr);
+
+        memMove(@as([*]u8, @ptrCast(self)), &buf_ptr.data, @sizeOf(Self));
     }
 
     pub inline fn getBitmapBlockNo(self: *Self, blockno: u32) u32 {
@@ -43,5 +45,3 @@ pub const SuperBlock = extern struct {
         return inum / fs.inodes_per_block + self.inode_start;
     }
 };
-
-pub var super_block: SuperBlock = undefined;

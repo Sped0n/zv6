@@ -6,8 +6,11 @@ const bio = @import("bio.zig");
 const Buf = @import("Buf.zig");
 const log = @import("log.zig");
 const SuperBlock = @import("SuperBlock.zig").SuperBlock;
-const super_block = @import("SuperBlock.zig").super_block;
 const DiskInode = @import("dinode.zig").DiskInode;
+
+comptime {
+    @export(&super_block, .{ .name = "global_super_block" });
+}
 
 pub const root_ino = 1; // root i-number
 pub const block_size = 1024; // block size
@@ -29,6 +32,8 @@ pub const DirEntry = extern struct {
     inum: u16,
     name: [dir_size]u8,
 };
+
+pub var super_block: SuperBlock = undefined;
 
 // File system implementation.  Five layers:
 //   + Blocks: allocator for raw disk blocks.
@@ -57,7 +62,7 @@ pub const block = struct {
         const buf_ptr = bio.read(dev, blockno);
         defer bio.release(buf_ptr);
 
-        @memset(buf_ptr.data, 0);
+        @memset(&buf_ptr.data, 0);
         log.write(buf_ptr);
     }
 
@@ -80,7 +85,7 @@ pub const block = struct {
                 blockno + bitmap_offset < super_block.size) : ({
                 bitmap_offset += 1;
             }) {
-                const mask: u8 = 1 << (bitmap_offset % 8);
+                const mask: u8 = @as(u8, 1) << @intCast(bitmap_offset % 8);
                 const block_in_use_ptr = &buf_ptr.data[bitmap_offset / 8];
                 if (block_in_use_ptr.* & mask == 0) { // Is block free?
                     block_in_use_ptr.* |= mask; // Mark block in use.
@@ -94,7 +99,7 @@ pub const block = struct {
             bio.release(buf_ptr);
         }
 
-        printf("disk_block.alloc: out of blocks\n");
+        printf("disk_block.alloc: out of blocks\n", .{});
         return null;
     }
 
@@ -105,7 +110,7 @@ pub const block = struct {
         defer bio.release(buf_ptr);
 
         const bitmap_offset = blockno % bitmap_bits_per_block;
-        const mask: u8 = 1 << (bitmap_offset % 8);
+        const mask: u8 = @as(u8, 1) << @intCast(bitmap_offset % 8);
         const block_in_use_ptr = &buf_ptr.data[bitmap_offset / 8];
         assert(block_in_use_ptr.* & mask != 0, @src());
         block_in_use_ptr.* &= ~mask;

@@ -73,7 +73,7 @@ pub fn init(dev: u32, super_block: *SuperBlock) void {
 ///Copy committed blocks from log to their home location
 fn installTrans(recovering: bool) void {
     var tail: u32 = 0;
-    while (tail < log.log_header.n) : (tail += 1) {
+    while (tail < log.header.n) : (tail += 1) {
         const log_buf_ptr = bio.read(log.dev, log.start + tail + 1);
         const disk_buf_ptr = bio.read(log.dev, log.header.block[tail]);
         defer {
@@ -81,7 +81,7 @@ fn installTrans(recovering: bool) void {
             bio.release(disk_buf_ptr);
         }
 
-        memMove(disk_buf_ptr.data, log_buf_ptr.data, fs.block_size);
+        memMove(&disk_buf_ptr.data, &log_buf_ptr.data, fs.block_size);
         bio.write(disk_buf_ptr);
         if (!recovering) bio.unPin(disk_buf_ptr);
     }
@@ -92,7 +92,7 @@ fn readHead() void {
     const buf_ptr = bio.read(log.dev, log.start);
     defer bio.release(buf_ptr);
 
-    const header_ptr: *Header = @ptrCast(&buf_ptr.data);
+    const header_ptr: *Header = @ptrCast(@alignCast(&buf_ptr.data));
     log.header.n = header_ptr.n;
     for (0..log.header.n) |i| {
         log.header.block[i] = header_ptr.block[i];
@@ -106,9 +106,9 @@ fn writeHead() void {
     const buf_ptr = bio.read(log.dev, log.start);
     defer bio.release(buf_ptr);
 
-    const header_ptr: *Header = @ptrCast(&buf_ptr.data);
+    const header_ptr: *Header = @ptrCast(@alignCast(&buf_ptr.data));
     header_ptr.n = log.header.n;
-    for (0..log.log_header.n) |i| {
+    for (0..log.header.n) |i| {
         header_ptr.block[i] = log.header.block[i];
     }
     bio.write(buf_ptr);
@@ -186,13 +186,13 @@ fn writeLog() void {
             bio.release(to);
         }
 
-        memMove(to.data, from.data, fs.block_size);
+        memMove(&to.data, &from.data, fs.block_size);
         bio.write(to); // write the log
     }
 }
 
 fn commit() void {
-    if (log.log_header.n == 0) return;
+    if (log.header.n == 0) return;
 
     writeLog(); // write modified blocks from cache to log
     writeHead(); // write header to disk -- the real commit
