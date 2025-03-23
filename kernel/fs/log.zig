@@ -1,5 +1,6 @@
 const SpinLock = @import("../lock/SpinLock.zig");
 const memMove = @import("../misc.zig").memMove;
+const misc = @import("../misc.zig");
 const param = @import("../param.zig");
 const assert = @import("../printf.zig").assert;
 const panic = @import("../printf.zig").panic;
@@ -92,11 +93,11 @@ fn readHead() void {
     const buf_ptr = bio.read(log.dev, log.start);
     defer bio.release(buf_ptr);
 
-    const header_ptr: *Header = @ptrCast(@alignCast(&buf_ptr.data));
-    log.header.n = header_ptr.n;
-    for (0..log.header.n) |i| {
-        log.header.block[i] = header_ptr.block[i];
-    }
+    const log_header = @as(
+        [*]u8,
+        @ptrCast(&log.header),
+    )[0..@sizeOf(@TypeOf(log.header))];
+    misc.memMove(log_header, &buf_ptr.data, log_header.len);
 }
 
 ///Write in-memory log header to disk.
@@ -106,11 +107,12 @@ fn writeHead() void {
     const buf_ptr = bio.read(log.dev, log.start);
     defer bio.release(buf_ptr);
 
-    const header_ptr: *Header = @ptrCast(@alignCast(&buf_ptr.data));
-    header_ptr.n = log.header.n;
-    for (0..log.header.n) |i| {
-        header_ptr.block[i] = log.header.block[i];
-    }
+    const log_header = @as(
+        [*]u8,
+        @ptrCast(&log.header),
+    )[0..@sizeOf(@TypeOf(log.header))];
+    misc.memMove(&buf_ptr.data, log_header, log_header.len);
+
     bio.write(buf_ptr);
 }
 
