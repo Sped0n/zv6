@@ -23,7 +23,7 @@ pub fn memMove(dst: [*]u8, src: [*]const u8, n: usize) void {
 }
 
 pub fn safeStrCopy(dst: [*]u8, src: []const u8, len: usize) void {
-    const l = @min(len, dst.len) - 1;
+    const l = @min(len, src.len);
     @memcpy(dst[0..l], src[0..l]);
     dst[l] = 0; // Null-terminate at the end of the copied region
 }
