@@ -53,12 +53,15 @@ const ProgramHeaderFlag = enum(u32) {
 };
 
 pub const Error = error{
+    ElfHeaderReadFailed,
     MagicMismatch,
+    ProgramHeaderReadFailed,
     ProgHdrTypeMismatch,
     MemSizeLessThanFileSize,
     AddressOverflow,
     AddressNotAligned,
     StackOverflow,
+    LoadSegReadFailed,
 };
 
 ///Load a program segment into pagetable at virtual address va.
@@ -85,22 +88,22 @@ fn loadSeg(
             );
         };
         const n: u32 = @min(size - i, riscv.pg_size);
-        try inode_ptr.read(
+        if (try inode_ptr.read(
             false,
             phy_addr,
             offset + i,
             n,
-        );
+        ) != n) return Error.LoadSegReadFailed;
     }
 }
 
 fn flagsToPerm(flags: u32) u64 {
-    if (flags & 0x1 != 0) return riscv.PteFlag.x;
-    if (flags & 0x2 != 0) return riscv.PteFlag.w;
+    if (flags & 0x1 != 0) return @intFromEnum(riscv.PteFlag.x);
+    if (flags & 0x2 != 0) return @intFromEnum(riscv.PteFlag.w);
     return 0;
 }
 
-pub fn exec(_path: []const u8, argv: []const [*c]u8) !u64 {
+pub fn exec(_path: []const u8, argv: *[param.max_arg]?[*c]u8) !u64 {
     var size: u64 = 0;
     var inode_ptr: ?*Inode = null;
     var page_table: ?riscv.PageTable = null;
@@ -121,7 +124,7 @@ pub fn exec(_path: []const u8, argv: []const [*c]u8) !u64 {
         inode_ptr.?.lock();
 
         // Check ELF header.
-        inode_ptr.?.read(
+        if (inode_ptr.?.read(
             false,
             @intFromPtr(&elf_hdr),
             0,
@@ -129,7 +132,10 @@ pub fn exec(_path: []const u8, argv: []const [*c]u8) !u64 {
         ) catch |e| {
             _error = e;
             break :ok_blk;
-        };
+        } != @sizeOf(@TypeOf(elf_hdr))) {
+            _error = Error.ElfHeaderReadFailed;
+            break :ok_blk;
+        }
 
         if (elf_hdr.magic != elf_magic) {
             _error = Error.MagicMismatch;
@@ -151,15 +157,18 @@ pub fn exec(_path: []const u8, argv: []const [*c]u8) !u64 {
             offset += prog_hdr_size;
         }) {
             // Read program header
-            inode_ptr.?.read(
+            if (inode_ptr.?.read(
                 false,
                 @intFromPtr(&prog_hdr),
-                offset,
+                @intCast(offset),
                 prog_hdr_size,
             ) catch |e| {
                 _error = e;
                 break :ok_blk;
-            };
+            } != @sizeOf(@TypeOf(prog_hdr))) {
+                _error = Error.ProgramHeaderReadFailed;
+                break :ok_blk;
+            }
 
             // Check if it is load segment.
             if (prog_hdr.type != ProgramHeaderType.load) continue;
@@ -194,8 +203,8 @@ pub fn exec(_path: []const u8, argv: []const [*c]u8) !u64 {
                 page_table.?,
                 prog_hdr.virt_addr,
                 inode_ptr.?,
-                prog_hdr.offset,
-                prog_hdr.file_size,
+                @intCast(prog_hdr.offset),
+                @intCast(prog_hdr.file_size),
             ) catch |e| {
                 _error = e;
                 break :ok_blk;
@@ -226,35 +235,39 @@ pub fn exec(_path: []const u8, argv: []const [*c]u8) !u64 {
             _error = e;
             break :ok_blk;
         };
-        vm.uvmClear(page_table, size - stack_size); // clears the guard page
-        const stack_pointer = size;
+        vm.uvmClear(page_table.?, size - stack_size); // clears the guard page
+        var stack_pointer = size;
         const stack_base = stack_pointer - param.user_stack * riscv.pg_size;
 
         // Push argument strings, prepare rest of stack in ustack.
         var ustack = [_]u64{0} ** param.max_arg;
-        for (argv, 0..) |arg, j| {
-            const arg_len_with_null_terminated = mem.len(arg) + 1;
-            stack_pointer -= arg_len_with_null_terminated;
-            stack_pointer -= (stack_pointer % 16);
-            if (stack_pointer < stack_base) {
-                _error = Error.StackOverflow;
-                break :ok_blk;
+        var argc: usize = 0;
+        for (argv) |opt_arg| {
+            if (opt_arg) |arg| {
+                const arg_len_with_null_terminated = mem.len(arg) + 1;
+                stack_pointer -= arg_len_with_null_terminated;
+                stack_pointer -= (stack_pointer % 16);
+                if (stack_pointer < stack_base) {
+                    _error = Error.StackOverflow;
+                    break :ok_blk;
+                }
+                vm.copyOut(
+                    page_table.?,
+                    stack_pointer,
+                    arg,
+                    arg_len_with_null_terminated,
+                ) catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+                ustack[argc] = stack_pointer;
+                argc += 1;
             }
-            vm.copyOut(
-                page_table.?,
-                stack_pointer,
-                arg,
-                arg_len_with_null_terminated,
-            ) catch |e| {
-                _error = e;
-                break :ok_blk;
-            };
-            ustack[j] = stack_pointer;
         }
-        ustack[argv.len] = 0;
+        ustack[argc] = 0;
 
         // Push the array of argv[] pointers.
-        const argv_array_size = (argv.len + 1) * @sizeOf(u64);
+        const argv_array_size = (argc + 1) * @sizeOf(u64);
         stack_pointer -= argv_array_size;
         stack_pointer -= stack_pointer % 16;
         if (stack_pointer < stack_base) {
@@ -264,7 +277,7 @@ pub fn exec(_path: []const u8, argv: []const [*c]u8) !u64 {
         vm.copyOut(
             page_table.?,
             stack_pointer,
-            @as([*]const u8, ustack),
+            @ptrCast(&ustack),
             argv_array_size,
         ) catch |e| {
             _error = e;
@@ -293,7 +306,7 @@ pub fn exec(_path: []const u8, argv: []const [*c]u8) !u64 {
         proc.trap_frame.sp = stack_pointer;
         Process.freePageTable(old_page_table, old_size);
 
-        return @intCast(argv.len); // this ends up in a0, the first argument to main(argc, argv)
+        return @intCast(argc); // this ends up in a0, the first argument to main(argc, argv)
     }
 
     if (page_table) |pgtbl| {

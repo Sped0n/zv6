@@ -21,6 +21,9 @@ const Context = @import("context.zig").Context;
 const Cpu = @import("Cpu.zig");
 const sched = @import("scheduler.zig").sched;
 const TrapFrame = @import("trapframe.zig").TrapFrame;
+const path = @import("../fs/path.zig");
+
+const initcode = @embedFile("initcode");
 
 ///trampoline.S
 const trampoline = @extern(
@@ -94,6 +97,7 @@ pub const Error = error{
     CurrentProcIsNull,
     NoChildAvailable,
     PidOutOfRange,
+    NoProcAvailable,
 };
 
 ///Allocate a page for each process's kernel stack.
@@ -165,56 +169,59 @@ pub fn allocPid() u32 {
 }
 
 fn create() !*Self {
-    for (0..param.n_proc) |i| {
-        const proc = &procs[i];
+    var proc: *Self = undefined;
 
-        proc.lock.acquire();
-
-        if (proc.state != .unused) continue;
-
-        proc.pid = allocPid();
-        proc.state = .used;
-
-        // Allocate a trapframe page.
-        proc.trap_frame = @ptrCast(kmem.alloc() catch |e| {
-            proc.free();
-            proc.lock.release();
-            return e;
-        });
-
-        // An empty user page table.
-        proc.page_table = createPageTable(proc) catch |e| {
-            proc.free();
-            proc.lock.release();
-            return e;
-        };
-
-        // Set up new context to start executing at forkret,
-        // which returns to user space.
-        const ctx = @as(
-            [*]u8,
-            @ptrCast(&proc.context),
-        )[0..@sizeOf(proc.context)];
-        @memset(ctx, 0);
-        proc.context.ra = @intFromPtr(&forkRet);
-        proc.context.sp = proc.kstack + riscv.pg_size;
-
-        return proc;
+    traverse_blk: {
+        for (0..param.n_proc) |i| {
+            proc = &procs[i];
+            proc.lock.acquire();
+            if (proc.state == .unused) {
+                break :traverse_blk;
+            } else {
+                proc.lock.release();
+            }
+        }
+        return Error.NoProcAvailable;
     }
 
-    return null;
+    proc.pid = allocPid();
+    proc.state = .used;
+
+    // Allocate a trapframe page.
+    proc.trap_frame = @ptrCast(@alignCast(kmem.alloc() catch |e| {
+        proc.free();
+        proc.lock.release();
+        return e;
+    }));
+
+    // An empty user page table.
+    proc.page_table = createPageTable(proc) catch |e| {
+        proc.free();
+        proc.lock.release();
+        return e;
+    };
+
+    // Set up new context to start executing at forkret,
+    // which returns to user space.
+    @memset(@as(
+        [*]u8,
+        @ptrCast(&proc.context),
+    )[0..@sizeOf(@TypeOf(proc.context))], 0);
+    proc.context.ra = @intFromPtr(&forkRet);
+    proc.context.sp = proc.kstack + riscv.pg_size;
+
+    return proc;
 }
 
 ///free a proc structure and the data hanging from it,
 ///including user pages.
 ///p->lock must be held.
 fn free(self: *Self) void {
-    if (self.trap_frame) |tf|
-        kmem.free(@ptrCast(tf));
-    self.trap_frame = null;
+    kmem.free(@ptrCast(self.trap_frame));
+    self.trap_frame = undefined;
 
     if (self.page_table) |pt|
-        self.freePageTable(pt, self.size);
+        freePageTable(pt, self.size);
     self.page_table = null;
 
     self.size = 0;
@@ -223,15 +230,13 @@ fn free(self: *Self) void {
     self.name[0] = 0;
     self.chan_addr = 0;
     self.killed = false;
-    self.xstate = 0;
+    self.exit_state = 0;
     self.state = .unused;
 }
 
 ///Create a user page table for a given process, with no user memory,
 ///but with trampoline and trapframe pages.
 pub fn createPageTable(self: *Self) !riscv.PageTable {
-    assert(self.trap_frame != null, @src());
-
     // An empty page table.
     const page_table = try vm.uvmCreate();
 
@@ -256,7 +261,7 @@ pub fn createPageTable(self: *Self) !riscv.PageTable {
         page_table,
         memlayout.trap_frame,
         riscv.pg_size,
-        @ptrCast(self.trap_frame.?),
+        @intFromPtr(self.trap_frame),
         @intFromEnum(riscv.PteFlag.r) | @intFromEnum(riscv.PteFlag.w),
     ) catch |e| {
         vm.uvmFree(page_table, 0);
@@ -272,6 +277,37 @@ pub fn freePageTable(page_table: riscv.PageTable, size: u64) void {
     vm.uvmUnmap(page_table, memlayout.trampoline, 1, false);
     vm.uvmUnmap(page_table, memlayout.trap_frame, 1, false);
     vm.uvmFree(page_table, size);
+}
+
+///Set up first user process.
+pub fn userInit() void {
+    const proc = Self.create() catch |e| panic(
+        @src(),
+        "Proc.create failed with {s}",
+        .{@errorName(e)},
+    );
+    assert(proc.page_table != null, @src());
+    init_proc = proc;
+
+    // allocate one user page and copy initcode's instructions
+    // and data into it.
+    vm.uvmFirst(proc.page_table.?, initcode);
+    proc.size = riscv.pg_size;
+
+    // prepare for the very first "return" from kernel to user.
+    proc.trap_frame.epc = 0; // user program counter
+    proc.trap_frame.sp = riscv.pg_size; // user stack pointer
+
+    misc.safeStrCopy(&proc.name, "initcode", proc.name.len);
+    proc.cwd = path.namei("/") catch |e| panic(
+        @src(),
+        "path.namei failed with {s}",
+        .{@errorName(e)},
+    );
+
+    proc.state = .runnable;
+
+    proc.lock.release();
 }
 
 ///Grow or shrink user memory by n bytes.
@@ -411,7 +447,7 @@ pub fn exit(status: i32) void {
 
         proc.lock.acquire();
 
-        proc.xstate = status;
+        proc.exit_state = status;
         proc.state = .zombie;
     }
 
@@ -422,12 +458,13 @@ pub fn exit(status: i32) void {
 
 // Wait for a child process to exit and return its pid.
 // Return null if this process has no children.
-pub fn wait(addr: u64) !i32 {
+pub fn wait(addr: u64) !u32 {
     const curr_proc = current() catch panic(
         @src(),
         "current proc is null",
         .{},
     );
+    assert(curr_proc.page_table != null, @src());
 
     wait_lock.acquire();
     defer wait_lock.release();
@@ -450,10 +487,10 @@ pub fn wait(addr: u64) !i32 {
             const pid = proc.pid;
             if (addr != 0) {
                 try vm.copyOut(
-                    curr_proc.page_table,
+                    curr_proc.page_table.?,
                     addr,
-                    @ptrCast(&proc.xstate),
-                    @sizeOf(proc.xstate),
+                    @ptrCast(&proc.exit_state),
+                    @sizeOf(@TypeOf(proc.exit_state)),
                 );
             }
 
@@ -570,7 +607,7 @@ pub fn wakeUp(chan_addr: u64) void {
 ///to user space (see userTrap() in trap.zig).
 pub fn kill(pid: u32) !void {
     for (0..param.n_proc) |i| {
-        const proc = procs[i];
+        const proc = &procs[i];
 
         proc.lock.acquire();
         defer proc.lock.release();
