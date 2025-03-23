@@ -2,6 +2,7 @@ const memlayout = @import("../memlayout.zig");
 const kmem = @import("../memory/kmem.zig");
 const misc = @import("../misc.zig");
 const panic = @import("../printf.zig").panic;
+const printf = @import("../printf.zig").printf;
 const Process = @import("../process/Process.zig");
 const riscv = @import("../riscv.zig");
 
@@ -310,7 +311,7 @@ pub fn uvmUnmap(
 
         if ((pte & @intFromEnum(
             riscv.PteFlag.v,
-        )) == 0) panic(@src(), "not mapped", {});
+        )) == 0) panic(@src(), "not mapped", .{});
         if (riscv.pteFlags(pte) == @intFromEnum(
             riscv.PteFlag.v,
         )) panic(@src(), "not a leaf", .{});
@@ -336,7 +337,6 @@ pub fn uvmCreate() !riscv.PageTable {
 
 ///Load the user initcode into address 0 of pagetable,
 ///for the very first process.
-///sz must be less than a page.
 pub fn uvmFirst(page_table: riscv.PageTable, src: []const u8) void {
     if (src.len > riscv.pg_size) panic(
         @src(),
@@ -344,7 +344,7 @@ pub fn uvmFirst(page_table: riscv.PageTable, src: []const u8) void {
         .{src.len},
     );
 
-    const mem_ptr = kmem.alloc() orelse {
+    const mem_ptr = kmem.alloc() catch {
         panic(@src(), "kalloc failed", .{});
         return;
     };
@@ -367,11 +367,11 @@ pub fn uvmFirst(page_table: riscv.PageTable, src: []const u8) void {
         kmem.free(mem_ptr);
         panic(
             @src(),
-            "mapPages failed with {d}",
+            "mapPages failed with {s}",
             .{@errorName(e)},
         );
     };
-    misc.memMove(mem, src, src.len);
+    misc.memMove(mem, src.ptr, src.len);
 }
 
 ///Allocate PTEs and physical memory to grow process from oldsz to
@@ -388,7 +388,7 @@ pub fn uvmMalloc(
     var size = local_old_size;
     while (size < new_size) : (size += riscv.pg_size) {
         const mem_ptr = kmem.alloc() catch |e| {
-            uvmDealloc(page_table, size, local_old_size);
+            _ = uvmDealloc(page_table, size, local_old_size);
             return e;
         };
 
@@ -405,7 +405,7 @@ pub fn uvmMalloc(
             ru_permission | permission,
         ) catch {
             kmem.free(mem_ptr);
-            uvmDealloc(page_table, size, old_size);
+            _ = uvmDealloc(page_table, size, old_size);
             return Error.MapPagesFailed;
         };
     }
@@ -497,7 +497,7 @@ pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) !void {
         ) catch panic(@src(), "pte should exist", .{});
 
         const pte = pte_ptr.*;
-        if (pte & @intFromEnum(riscv.PteFlag.v)) panic(
+        if (pte & @intFromEnum(riscv.PteFlag.v) == 0) panic(
             @src(),
             "page not present, current pte flag is {x}",
             .{riscv.pteFlags(pte)},
@@ -552,7 +552,7 @@ pub fn uvmClear(page_table: riscv.PageTable, virt_addr: u64) void {
         "walk failed with {s}",
         .{@errorName(e)},
     );
-    pte_ptr.* &= ~@intFromPtr(riscv.PteFlag.u);
+    pte_ptr.* &= ~@intFromEnum(riscv.PteFlag.u);
 }
 
 ///Copy from kernel to user.
