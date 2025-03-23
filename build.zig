@@ -7,6 +7,10 @@ const virtio_args = [_][]const u8{
     "file=fs.img,if=none,format=raw,id=x0",
     "-device",
     "virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0",
+    "-D",
+    "qemu_debug.log",
+    "-d",
+    "guest_errors,int,trace:virtio_*",
 };
 
 const qemu_run_args = [_][]const u8{
@@ -87,7 +91,7 @@ const user_progs = [_][]const u8{
     "zombie",
 };
 
-pub fn build(b: *std.Build) !void {
+pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const native = b.standardTargetOptions(.{});
     const rv64 = b.resolveTargetQuery(.{
@@ -97,31 +101,33 @@ pub fn build(b: *std.Build) !void {
     });
 
     // step --------------------------------------------------------------------
-    const mkfs_build_step = b.step(
+    const build_mkfs_step = b.step(
         "mkfs",
         "Build mkfs binary",
     );
-    const mkfs_run_step = b.step(
-        "mkfs-run",
-        "Make fs image",
-    );
 
     const gen_usys_step = b.step("gen-usys", "Generate usys.S");
-    const initcode_step = b.step("initcode", "Build initcode binary");
-    const user_build_step = b.step(
+    const build_user_step = b.step(
         "user",
         "Build user programs",
     );
 
-    const kernel_build_step = b.step(
+    const create_image_step = b.step(
+        "image",
+        "Create fs image",
+    );
+
+    const gen_initcode_step = b.step("initcode", "Generate initcode binary");
+
+    const build_kernel_step = b.step(
         "kernel",
         "Build kernel",
     );
-    const kernel_run_step = b.step(
+    const run_kernel_step = b.step(
         "qemu",
         "Start the kernel in qemu",
     );
-    const kernel_run_gdb_step = b.step(
+    const debug_kernel_step = b.step(
         "qemu-gdb",
         "Start the kernel in qemu with gdb",
     );
@@ -135,7 +141,7 @@ pub fn build(b: *std.Build) !void {
     const mkfs_module = b.createModule(.{
         .root_source_file = null,
         .target = native,
-        .optimize = optimize,
+        .optimize = .ReleaseFast,
     });
     mkfs_module.addIncludePath(b.path("."));
     mkfs_module.addCSourceFile(.{
@@ -160,14 +166,7 @@ pub fn build(b: *std.Build) !void {
                 },
             },
         );
-        mkfs_build_step.dependOn(&build_cmd.step);
-
-        const run_cmd = b.addRunArtifact(mkfs);
-        run_cmd.step.dependOn(mkfs_build_step);
-        mkfs_run_step.dependOn(&run_cmd.step);
-        if (b.args) |args| {
-            run_cmd.addArgs(args);
-        }
+        build_mkfs_step.dependOn(&build_cmd.step);
     }
 
     // usys --------------------------------------------------------------------
@@ -182,7 +181,7 @@ pub fn build(b: *std.Build) !void {
             "../user/usys.S",
         ).step,
     );
-    user_build_step.dependOn(gen_usys_step);
+    build_user_step.dependOn(gen_usys_step);
 
     // user programs -----------------------------------------------------------
     const ulib_module = b.createModule(.{
@@ -206,8 +205,6 @@ pub fn build(b: *std.Build) !void {
     });
     ulib_module.addAssemblyFile(b.path("user/usys.S"));
 
-    var prog_paths = std.ArrayList([]const u8).init(b.allocator);
-
     {
         const ulib = b.addStaticLibrary(.{
             .name = "ulib",
@@ -224,26 +221,30 @@ pub fn build(b: *std.Build) !void {
             prog_module.linkLibrary(ulib);
             prog_module.addIncludePath(b.path("."));
             prog_module.addCSourceFile(.{
-                .file = b.path(try std.mem.concat(
+                .file = b.path(std.mem.concat(
                     b.allocator,
                     u8,
                     &[_][]const u8{ "user/", prog_name, ".c" },
-                )),
+                ) catch unreachable),
                 .flags = &cflags,
             });
 
             const prog = b.addExecutable(.{
-                .name = try std.mem.concat(
+                .name = std.mem.concat(
                     b.allocator,
                     u8,
                     &[_][]const u8{ "_", prog_name },
-                ),
+                ) catch unreachable,
                 .root_module = prog_module,
             });
             prog.setLinkerScript(b.path("user/user.ld"));
             prog.link_z_max_page_size = 4096;
             prog.entry = .{ .symbol_name = "main" };
-            user_build_step.dependOn(&b.addInstallArtifact(
+            prog.link_function_sections = true;
+            prog.link_data_sections = true;
+            prog.link_gc_sections = true;
+
+            build_user_step.dependOn(&b.addInstallArtifact(
                 prog,
                 .{
                     .dest_dir = .{
@@ -251,16 +252,30 @@ pub fn build(b: *std.Build) !void {
                     },
                 },
             ).step);
-
-            prog_paths.append(b.getInstallPath(
-                .{ .custom = "user" },
-                try std.mem.concat(
-                    b.allocator,
-                    u8,
-                    &[_][]const u8{ "_", prog_name },
-                ),
-            )) catch unreachable;
         }
+    }
+
+    // fs.img ------------------------------------------------------------------
+    {
+        var prog_paths = std.ArrayList([]const u8).init(b.allocator);
+        for (user_progs) |prog_name| prog_paths.append(
+            std.mem.concat(
+                b.allocator,
+                u8,
+                &[_][]const u8{ "zig-out/user/", "_", prog_name },
+            ) catch unreachable,
+        ) catch unreachable;
+
+        const create_image_cmd = b.addSystemCommand(&[_][]const u8{
+            "zig-out/mkfs/mkfs",
+            "fs.img",
+            "README",
+        });
+        create_image_cmd.setCwd(b.path("."));
+        create_image_cmd.addArgs(prog_paths.items);
+        create_image_cmd.step.dependOn(build_mkfs_step);
+        create_image_cmd.step.dependOn(build_user_step);
+        create_image_step.dependOn(&create_image_cmd.step);
     }
 
     // initcode ----------------------------------------------------------------
@@ -278,7 +293,7 @@ pub fn build(b: *std.Build) !void {
         initcode_object.getEmittedBin(),
         .{ .format = .bin },
     );
-    initcode_step.dependOn(&b.addInstallBinFile(
+    gen_initcode_step.dependOn(&b.addInstallBinFile(
         initcode_bin.getOutput(),
         "../user/initcode",
     ).step);
@@ -294,19 +309,24 @@ pub fn build(b: *std.Build) !void {
     kernel_module.addAssemblyFile(b.path("kernel/asm/trampoline.S"));
     kernel_module.addAssemblyFile(b.path("kernel/asm/kernelvec.S"));
     kernel_module.addAssemblyFile(b.path("kernel/asm/swtch.S"));
+    kernel_module.addAnonymousImport("initcode", .{
+        .root_source_file = b.path("zig-out/user/initcode"),
+    });
 
     {
         const kernel = b.addExecutable(.{
             .name = "kernel",
             .root_module = kernel_module,
             .linkage = .static,
+            .omit_frame_pointer = false,
         });
         // for std.fmt.format would crash if want_lto is false
         kernel.want_lto = true;
+        kernel.setLinkerScript(b.path("kernel/kernel.ld"));
+        kernel.link_z_max_page_size = 4096;
         kernel.link_function_sections = true;
         kernel.link_data_sections = true;
         kernel.link_gc_sections = true;
-        kernel.setLinkerScript(b.path("kernel/kernel.ld"));
         kernel.entry = .{ .symbol_name = "_entry" };
 
         const build_cmd = b.addInstallArtifact(
@@ -317,20 +337,18 @@ pub fn build(b: *std.Build) !void {
                 },
             },
         );
-        kernel_build_step.dependOn(&build_cmd.step);
-        kernel_build_step.dependOn(initcode_step);
+        build_cmd.step.dependOn(gen_initcode_step);
+        build_kernel_step.dependOn(&build_cmd.step);
 
         const run_cmd = b.addSystemCommand(&qemu_run_args);
-        run_cmd.step.dependOn(kernel_build_step);
-        if (b.args) |args| run_cmd.addArgs(args);
+        run_cmd.step.dependOn(create_image_step);
+        run_cmd.step.dependOn(build_kernel_step);
+        run_kernel_step.dependOn(&run_cmd.step);
 
-        kernel_run_step.dependOn(&run_cmd.step);
-
-        const run_gdb_cmd = b.addSystemCommand(&qemu_gdb_args);
-        run_gdb_cmd.step.dependOn(b.getInstallStep());
-        if (b.args) |args| run_gdb_cmd.addArgs(args);
-
-        kernel_run_gdb_step.dependOn(&run_gdb_cmd.step);
+        const debug_cmd = b.addSystemCommand(&qemu_gdb_args);
+        debug_cmd.step.dependOn(create_image_step);
+        debug_cmd.step.dependOn(build_kernel_step);
+        debug_kernel_step.dependOn(&debug_cmd.step);
     }
 
     // zls build-on-save
@@ -342,7 +360,11 @@ pub fn build(b: *std.Build) !void {
         });
         // for std.fmt.format would crash if want_lto is false
         exe_check.want_lto = true;
-        exe_check.setLinkerScript(b.path("src/kernel.ld"));
+        exe_check.setLinkerScript(b.path("kernel/kernel.ld"));
+        exe_check.link_z_max_page_size = 4096;
+        exe_check.link_function_sections = true;
+        exe_check.link_data_sections = true;
+        exe_check.link_gc_sections = true;
         exe_check.entry = .{ .symbol_name = "_entry" };
 
         // some error are lazy, has to run install step so zls can give us feedback
