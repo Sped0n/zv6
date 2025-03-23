@@ -228,8 +228,8 @@ pub fn unlink() !u64 {
     var _error: anyerror = undefined;
     ok_blk: {
         const name_slice: []const u8 = mem.sliceTo(&name, 0);
-        if (mem.eql(name_slice, ".") or
-            mem.eql(name_slice, ".."))
+        if (mem.eql(u8, name_slice, ".") or
+            mem.eql(u8, name_slice, ".."))
         {
             // Cannot unlink "." or "..".
             _error = Error.TryToUnlinkDots;
@@ -259,7 +259,7 @@ pub fn unlink() !u64 {
         // Clear direcotry entry.
         var dir_entry: fs.DirEntry = undefined;
         const dir_entry_size = @sizeOf(fs.DirEntry);
-        @memset(@as([*]u8, &dir_entry)[0..dir_entry_size], 0);
+        @memset(@as([*]u8, @ptrCast(&dir_entry))[0..dir_entry_size], 0);
         assert(
             parent_dir_inode_ptr.write(
                 false,
@@ -281,7 +281,7 @@ pub fn unlink() !u64 {
         parent_dir_inode_ptr.unlockPut();
 
         // Decrement link count of inode being unlinked.
-        inode_ptr.nlink -= 1;
+        inode_ptr.dinode.nlink -= 1;
         inode_ptr.update();
         inode_ptr.unlockPut();
 
@@ -305,7 +305,7 @@ fn create(_path: []const u8, _type: InodeType, major: u16, minor: u16) !*Inode {
     parent_dir_inode_ptr.lock();
 
     var inode_ptr: *Inode = undefined;
-    if (parent_dir_inode_ptr.dirLookUp(name_slice, false)) |ip| {
+    if (parent_dir_inode_ptr.dirLookUp(name_slice, null)) |ip| {
         // Entry already existed.
         inode_ptr = ip;
         parent_dir_inode_ptr.unlockPut();
@@ -330,8 +330,8 @@ fn create(_path: []const u8, _type: InodeType, major: u16, minor: u16) !*Inode {
 
     inode_ptr.lock();
     // Initialize allocated inode.
-    inode_ptr.major = major;
-    inode_ptr.minor = minor;
+    inode_ptr.dinode.major = major;
+    inode_ptr.dinode.minor = minor;
     inode_ptr.dinode.nlink = 1;
     inode_ptr.update();
 
@@ -377,7 +377,7 @@ pub fn open() !u64 {
     const omode = argRaw(1);
 
     var _path = [_]u8{0} ** param.max_path;
-    try argStr(0, &_path, param.max_path);
+    try argStr(0, &_path);
     const path_slice = mem.sliceTo(&_path, 0);
 
     log.beginOp();
@@ -514,7 +514,7 @@ pub fn exec() !u64 {
 
     var argv = [_]?[*c]u8{null} ** param.max_arg;
     defer for (argv) |optional_arg| if (optional_arg) |arg| kmem.free(
-        arg,
+        @ptrCast(arg),
     );
 
     var i: usize = 0;
@@ -530,7 +530,7 @@ pub fn exec() !u64 {
         try fetchStr(uarg, argv[i].?, riscv.pg_size);
     }
 
-    return try elf.exec(path_slice, mem.sliceTo(&argv, null));
+    return try elf.exec(path_slice, &argv);
 }
 
 pub fn pipe() !u64 {
@@ -558,8 +558,8 @@ pub fn pipe() !u64 {
     vm.copyOut(
         proc.page_table.?,
         fd_array,
-        @as([*]const u8, &fd0),
-        @sizeOf(fd0),
+        @as([*]const u8, @ptrCast(&fd0)),
+        @sizeOf(@TypeOf(fd0)),
     ) catch |e| {
         proc.ofiles[fd0] = null;
         proc.ofiles[fd1] = null;
@@ -570,8 +570,8 @@ pub fn pipe() !u64 {
     vm.copyOut(
         proc.page_table.?,
         fd_array,
-        @as([*]const u8, &fd1),
-        @sizeOf(fd1),
+        @as([*]const u8, @ptrCast(&fd1)),
+        @sizeOf(@TypeOf(fd1)),
     ) catch |e| {
         proc.ofiles[fd0] = null;
         proc.ofiles[fd1] = null;

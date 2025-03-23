@@ -1,6 +1,5 @@
 const Process = @import("../process/Process.zig");
-const ticks = @import("../trap.zig").ticks;
-const ticks_lock = @import("../trap.zig").ticks_lock;
+const trap = @import("../trap.zig");
 const argRaw = @import("syscall.zig").argRaw;
 
 pub const Error = error{
@@ -36,15 +35,15 @@ pub fn sbrk() !u64 {
 pub fn sleep() !u64 {
     const n: u32 = @intCast(argRaw(0));
 
-    ticks_lock.acquire();
-    defer ticks_lock.release();
+    trap.ticks_lock.acquire();
+    defer trap.ticks_lock.release();
 
-    const ticks0 = ticks;
-    while (ticks - ticks0 < n) {
+    const ticks0 = trap.ticks;
+    while (trap.ticks - ticks0 < n) {
         if ((try Process.current()).isKilled()) {
             return Error.ProcIsKilled;
         }
-        Process.sleep(@intFromPtr(&ticks), &ticks_lock);
+        Process.sleep(@intFromPtr(&trap.ticks), &trap.ticks_lock);
     }
     return 0;
 }
@@ -56,8 +55,8 @@ pub fn kill() !u64 {
 }
 
 pub fn uptime() u64 {
-    ticks_lock.acquire();
-    defer ticks_lock.release();
+    trap.ticks_lock.acquire();
+    defer trap.ticks_lock.release();
 
-    return ticks;
+    return trap.ticks;
 }

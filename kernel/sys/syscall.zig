@@ -50,7 +50,8 @@ pub fn fetchRaw(addr: u64, dst: *u64) !void {
         addr + @sizeOf(u64) > proc.size) return Error.AddressOverflow;
     try vm.copyIn(
         proc.page_table.?,
-        @as([*]u8, dst),
+        @ptrCast(dst),
+        addr,
         @sizeOf(u64),
     );
 }
@@ -65,7 +66,7 @@ pub fn fetchStr(addr: u64, dst: [*c]u8, len: usize) !void {
     );
     assert(proc.page_table != null, @src());
     try vm.copyInStr(
-        proc.page_table,
+        proc.page_table.?,
         dst,
         addr,
         @intCast(len),
@@ -103,6 +104,11 @@ pub fn syscall() void {
         "current proc is null",
         .{},
     );
+
+    printf(
+        "{d} {s}: syscall ID {d}\n",
+        .{ proc.pid, proc.name, proc.trap_frame.a7 },
+    );
     const a7 = proc.trap_frame.a7;
     const a0 = &proc.trap_frame.a0;
     const syscall_id = meta.intToEnum(
@@ -113,192 +119,139 @@ pub fn syscall() void {
             "{d} {s}: unknown syscall ID {d}\n",
             .{ proc.pid, proc.name, proc.trap_frame.a7 },
         );
-        a0.* = @intCast(-1);
+        @as(*i64, @ptrCast(a0)).* = -1;
         return;
     };
-    switch (syscall_id) {
-        .fork => {
-            a0.* = sysproc.fork() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}\n",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .exit => {
-            a0.* = sysproc.exit();
-        },
-        .wait => {
-            a0.* = sysproc.wait() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}\n",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .pipe => {
-            a0.* = sysfile.pipe() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}\n",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .read => {
-            a0.* = sysfile.read() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .kill => {
-            a0.* = sysproc.kill() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .exec => {
-            a0.* = sysfile.exec() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .fstat => {
-            a0.* = sysfile.fileStat() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .chdir => {
-            a0.* = sysfile.chdir() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .dup => {
-            a0.* = sysfile.dup() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .getpid => {
-            a0.* = sysproc.getPid() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .sbrk => {
-            a0.* = sysproc.sbrk() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .sleep => {
-            a0.* = sysproc.sleep() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .uptime => {
-            a0.* = sysproc.uptime() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .open => {
-            a0.* = sysfile.open() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .write => {
-            a0.* = sysfile.write() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .mknod => {
-            a0.* = sysfile.mknod() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .unlink => {
-            a0.* = sysfile.unlink() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .link => {
-            a0.* = sysfile.link() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .mkdir => {
-            a0.* = sysfile.mkdir() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
-        .close => {
-            a0.* = sysfile.close() catch |e| {
-                printf(
-                    "syscall({d}) failed with {s}",
-                    .{ a7, @errorName(e) },
-                );
-                a0.* = @intCast(-1);
-            };
-        },
+
+    var _error: anyerror = undefined;
+    ok_blk: {
+        switch (syscall_id) {
+            .fork => {
+                a0.* = sysproc.fork() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+            .exit => {
+                a0.* = sysproc.exit();
+            },
+            .wait => {
+                a0.* = sysproc.wait() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+            .pipe => {
+                a0.* = sysfile.pipe() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+            .read => {
+                a0.* = sysfile.read() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+            .kill => {
+                a0.* = sysproc.kill() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+            .exec => {
+                a0.* = sysfile.exec() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+            .fstat => {
+                a0.* = sysfile.fileStat() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+            .chdir => {
+                a0.* = sysfile.chdir() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+            .dup => {
+                a0.* = sysfile.dup() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+            .getpid => {
+                a0.* = sysproc.getPid() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+            .sbrk => {
+                a0.* = sysproc.sbrk() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+            .sleep => {
+                a0.* = sysproc.sleep() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+            .uptime => {
+                a0.* = sysproc.uptime();
+            },
+            .open => {
+                a0.* = sysfile.open() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+            .write => {
+                a0.* = sysfile.write() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+            .mknod => {
+                a0.* = sysfile.mknod() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+            .unlink => {
+                a0.* = sysfile.unlink() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+            .link => {
+                a0.* = sysfile.link() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+            .mkdir => {
+                a0.* = sysfile.mkdir() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+            .close => {
+                a0.* = sysfile.close() catch |e| {
+                    _error = e;
+                    break :ok_blk;
+                };
+            },
+        }
     }
+
+    printf(
+        "syscall({d}) failed with {s}\n",
+        .{ a7, @errorName(_error) },
+    );
+    @as(*i64, @ptrCast(a0)).* = -1;
 }
