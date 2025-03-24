@@ -6,10 +6,12 @@ var dummy = atomic.Value(u8).init(0);
 
 ///https://github.com/ziglang/zig/blob/52ba2c3a43a88a4db30cff47f2f3eff8c3d5be19/lib/std/special/c.zig#L115
 pub fn memMove(dst: [*]u8, src: [*]const u8, n: usize) void {
+    @setRuntimeSafety(false);
+
     const src_addr = @intFromPtr(src);
     const dst_addr = @intFromPtr(dst);
 
-    if (src_addr < dst_addr and (src_addr + n) > dst_addr) {
+    if (src_addr < dst_addr and src_addr + n > dst_addr) {
         var i = n;
         while (i > 0) : (i -= 1) {
             dst[i] = src[i];
