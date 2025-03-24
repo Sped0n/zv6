@@ -35,7 +35,7 @@ pub fn initHart() void {
 
 ///Handle an interrupt, exception, or system call from user space.
 ///called from trampoline.S
-pub fn userTrap() void {
+pub fn userTrap() callconv(.c) void {
     if ((riscv.sstatus.read() & @intFromEnum(riscv.SStatusValue.spp)) != 0) {
         panic(@src(), "not from user mode", .{});
     }
@@ -89,7 +89,7 @@ pub fn userTrap() void {
 }
 
 ///return to user space
-pub fn userTrapRet() void {
+pub fn userTrapRet() callconv(.c) void {
     const proc = Process.current() catch panic(
         @src(),
         "current proc is null",
@@ -146,7 +146,7 @@ pub fn userTrapRet() void {
     trampoline_userret(memlayout.trap_frame, satp);
 }
 
-pub export fn kernelTrap() void {
+pub export fn kernelTrap() callconv(.c) void {
     const sepc = riscv.sepc.read();
     const sstatus = riscv.sstatus.read();
     const scause = riscv.scause.read();
@@ -165,7 +165,8 @@ pub export fn kernelTrap() void {
     const which_dev = devIntr();
     if (which_dev == .not_recognize) {
         // interrupt or trap from an unknown source
-        printf(
+        panic(
+            @src(),
             "scause={x}, sepc={x}, stval={x}\n",
             .{ scause, riscv.sepc.read(), riscv.stval.read() },
         );
