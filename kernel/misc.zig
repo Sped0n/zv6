@@ -34,13 +34,3 @@ pub fn safeStrCopy(dst: [*]u8, src: []const u8, len: usize) void {
 pub fn fence() void {
     _ = dummy.fetchAdd(0, .seq_cst);
 }
-
-pub fn memEql(v1: [*]const u8, v2: [*]const u8, len: u32) bool {
-    var i: u32 = 0;
-    while (i < len) : (i += 1) {
-        if (v1[i] == 0 or v2[i] == 0) return v1[i] == v2[i];
-
-        if (v1[i] != v2[i]) return false;
-    }
-    return true;
-}
