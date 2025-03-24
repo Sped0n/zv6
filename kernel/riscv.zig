@@ -165,7 +165,7 @@ pub const pmpaddr0 = WriteOnlyRegister("pmpaddr0");
 const satp_sv39 = @as(u64, 8) << 60;
 
 ///Make a Supervisor Address Translation and Protection table, satp
-pub fn makeSatp(pagetable: PageTable) u64 {
+pub inline fn makeSatp(pagetable: PageTable) u64 {
     return satp_sv39 | (@intFromPtr(pagetable) >> 12);
 }
 
