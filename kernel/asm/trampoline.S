@@ -12,10 +12,9 @@
 
 .section trampsec
 .globl trampoline
-.globl userTrap
 trampoline:
-.align 4
 .globl userVec
+.align 4
 userVec:    
 	#
         # userTrapRet sets stvec to point here, so
@@ -90,6 +89,7 @@ userVec:
         jr t0
 
 .globl userRet
+.align 4
 userRet:
         # userret(TRAPFRAME, pagetable)
         # called by userTrapRet() in trap.zig to
