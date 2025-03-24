@@ -136,9 +136,13 @@ pub fn userTrapRet() void {
     // jump to userRet in trampoline.S at the top of memory, which
     // switches to the user page table, restores user registers,
     // and switches to user mode with sret.
-    const trampoline_userret = @as(*const fn (tp: u64, satp: u64) void, @ptrFromInt(
-        memlayout.trampoline + (@intFromPtr(&userRet) - @intFromPtr(trampoline)),
-    ));
+    const trampoline_userret = @as(
+        *const fn (tp: u64, satp: u64) callconv(.c) void, // callconv is a must here!
+        @ptrFromInt(
+            memlayout.trampoline +
+                (@intFromPtr(&userRet) - @intFromPtr(trampoline)),
+        ),
+    );
     trampoline_userret(memlayout.trap_frame, satp);
 }
 
