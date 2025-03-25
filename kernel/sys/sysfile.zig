@@ -18,6 +18,7 @@ const Process = @import("../process/Process.zig");
 const riscv = @import("../riscv.zig");
 const argRaw = @import("syscall.zig").argRaw;
 const argStr = @import("syscall.zig").argStr;
+const argU32 = @import("syscall.zig").argU32;
 const fetchRaw = @import("syscall.zig").fetchRaw;
 const fetchStr = @import("syscall.zig").fetchStr;
 
@@ -46,7 +47,7 @@ const Error = error{
 };
 
 fn argFd(n: usize, fd_ptr: ?*usize, ofile_ptr: ?**File) !void {
-    const fd: usize = @intCast(argRaw(n));
+    const fd = argRaw(n);
     if (fd >= param.n_ofile) return Error.FdOutOfRange;
     const proc = Process.current() catch panic(
         @src(),
@@ -85,7 +86,7 @@ pub fn dup() !u64 {
 
 pub fn read() !u64 {
     const addr = argRaw(1);
-    const len: u32 = @intCast(argRaw(2));
+    const len = argU32(2);
     var file_ptr: *File = undefined;
     try argFd(0, null, &file_ptr);
 
@@ -97,7 +98,7 @@ pub fn read() !u64 {
 
 pub fn write() !u64 {
     const addr = argRaw(1);
-    const len: u32 = @intCast(argRaw(2));
+    const len = argU32(2);
     var file_ptr: *File = undefined;
     try argFd(0, null, &file_ptr);
 
@@ -507,15 +508,15 @@ pub fn chdir() !u64 {
 }
 
 pub fn exec() !u64 {
-    const uargv = argRaw(1);
     var _path = [_]u8{0} ** param.max_path;
-    try argStr(0, &_path);
-    const path_slice = mem.sliceTo(&_path, 0);
-
     var argv = [_]?[*c]u8{null} ** param.max_arg;
     defer for (argv) |optional_arg| if (optional_arg) |arg| kmem.free(
         @ptrCast(arg),
     );
+
+    const uargv = argRaw(1);
+    try argStr(0, &_path);
+    const path_slice = mem.sliceTo(&_path, 0);
 
     var i: usize = 0;
     while (true) : (i += 1) {
@@ -527,7 +528,7 @@ pub fn exec() !u64 {
         if (uarg == 0) break;
 
         argv[i] = try kmem.alloc();
-        try fetchStr(uarg, argv[i].?, riscv.pg_size);
+        try fetchStr(uarg, argv[i].?.*, riscv.pg_size);
     }
 
     return try elf.exec(path_slice, &argv);

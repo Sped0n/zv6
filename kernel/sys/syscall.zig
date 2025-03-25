@@ -91,6 +91,42 @@ pub fn argRaw(n: usize) u64 {
     }
 }
 
+///Fetch the 64-bit system call argument, return it as i32
+pub fn argI32(n: usize) i32 {
+    const proc = Process.current() catch panic(
+        @src(),
+        "current proc is null",
+        .{},
+    );
+    switch (n) {
+        0 => return @as(*i32, @ptrCast(&proc.trap_frame.a0)).*,
+        1 => return @as(*i32, @ptrCast(&proc.trap_frame.a1)).*,
+        2 => return @as(*i32, @ptrCast(&proc.trap_frame.a2)).*,
+        3 => return @as(*i32, @ptrCast(&proc.trap_frame.a3)).*,
+        4 => return @as(*i32, @ptrCast(&proc.trap_frame.a4)).*,
+        5 => return @as(*i32, @ptrCast(&proc.trap_frame.a5)).*,
+        else => panic(@src(), "unknown id({d})", .{n}),
+    }
+}
+
+///Fetch the 64-bit system call argument, return it as u32
+pub fn argU32(n: usize) u32 {
+    const proc = Process.current() catch panic(
+        @src(),
+        "current proc is null",
+        .{},
+    );
+    switch (n) {
+        0 => return @as(*u32, @ptrCast(&proc.trap_frame.a0)).*,
+        1 => return @as(*u32, @ptrCast(&proc.trap_frame.a1)).*,
+        2 => return @as(*u32, @ptrCast(&proc.trap_frame.a2)).*,
+        3 => return @as(*u32, @ptrCast(&proc.trap_frame.a3)).*,
+        4 => return @as(*u32, @ptrCast(&proc.trap_frame.a4)).*,
+        5 => return @as(*u32, @ptrCast(&proc.trap_frame.a5)).*,
+        else => panic(@src(), "unknown id({d})", .{n}),
+    }
+}
+
 ///Fetch the nth word-sized system call argument as a null-terminated string.
 ///Copies into buf, at most max.
 pub fn argStr(n: usize, buf: []u8) !void {
