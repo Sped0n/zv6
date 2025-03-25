@@ -13,6 +13,7 @@ const vm = @import("../memory/vm.zig");
 const param = @import("../param.zig");
 const panic = @import("../printf.zig").panic;
 const assert = @import("../printf.zig").assert;
+const printf = @import("../printf.zig").printf;
 const elf = @import("../process/elf.zig");
 const Process = @import("../process/Process.zig");
 const riscv = @import("../riscv.zig");
@@ -508,30 +509,34 @@ pub fn chdir() !u64 {
 }
 
 pub fn exec() !u64 {
-    var _path = [_]u8{0} ** param.max_path;
-    var argv = [_]?[*c]u8{null} ** param.max_arg;
-    defer for (argv) |optional_arg| if (optional_arg) |arg| kmem.free(
-        @ptrCast(arg),
-    );
+    const _path = try kmem.ksfba_allocator.alloc(u8, param.max_path);
+    defer kmem.ksfba_allocator.free(_path);
+    var argv = try kmem.ksfba_allocator.alloc(?*[4096]u8, param.max_arg);
+    defer kmem.ksfba_allocator.free(argv);
 
     const uargv = argRaw(1);
-    try argStr(0, &_path);
-    const path_slice = mem.sliceTo(&_path, 0);
+    try argStr(0, _path);
+    const path_slice = mem.sliceTo(_path, 0);
 
     var i: usize = 0;
+    defer for (0..i) |j| {
+        printf("{any}\n", .{argv[j].?});
+        kmem.free(argv[j].?);
+    };
     while (true) : (i += 1) {
         if (i >= argv.len) {
             return Error.ArgcOverflow;
         }
         var uarg: u64 = 0;
         try fetchRaw(uargv + @sizeOf(u64) * i, &uarg);
+        printf("uarg: {d}\n", .{uarg});
         if (uarg == 0) break;
 
         argv[i] = try kmem.alloc();
-        try fetchStr(uarg, argv[i].?.*, riscv.pg_size);
+        try fetchStr(uarg, argv[i].?, riscv.pg_size);
     }
 
-    return try elf.exec(path_slice, &argv);
+    return try elf.exec(path_slice, argv);
 }
 
 pub fn pipe() !u64 {
