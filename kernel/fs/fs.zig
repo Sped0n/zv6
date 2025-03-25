@@ -8,10 +8,6 @@ const log = @import("log.zig");
 const SuperBlock = @import("SuperBlock.zig").SuperBlock;
 const DiskInode = @import("dinode.zig").DiskInode;
 
-comptime {
-    @export(&super_block, .{ .name = "global_super_block" });
-}
-
 pub const root_ino = 1; // root i-number
 pub const block_size = 1024; // block size
 

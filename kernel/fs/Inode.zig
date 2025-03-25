@@ -183,8 +183,8 @@ pub fn alloc(dev: u32, _type: InodeType) ?*Self {
         defer bio.release(buf_ptr);
 
         const disk_inode_ptr = &@as(
-            [*]DiskInode,
-            @ptrCast(@alignCast(&buf_ptr.data)),
+            [*]align(1) DiskInode,
+            @ptrCast(&buf_ptr.data),
         )[inum % fs.inodes_per_block];
         if (disk_inode_ptr.type == .free) { // a free node
             @memset(@as([*]u8, @ptrCast(disk_inode_ptr))[0..@sizeOf(DiskInode)], 0);
@@ -209,8 +209,8 @@ pub fn update(self: *Self) void {
     defer bio.release(buf_ptr);
 
     const disk_inode_ptr = &@as(
-        [*]DiskInode,
-        @ptrCast(@alignCast(&buf_ptr.data)),
+        [*]align(1) DiskInode,
+        @ptrCast(&buf_ptr.data),
     )[self.inum % fs.inodes_per_block];
     disk_inode_ptr.* = self.dinode;
     log.write(buf_ptr);
@@ -243,8 +243,8 @@ pub fn lock(self: *Self) void {
         defer bio.release(buf_ptr);
 
         const disk_inode_ptr = &@as(
-            [*]DiskInode,
-            @ptrCast(@alignCast(&buf_ptr.data)),
+            [*]align(1) DiskInode,
+            @ptrCast(&buf_ptr.data),
         )[self.inum % fs.inodes_per_block];
         (&self.dinode).* = disk_inode_ptr.*;
     }
