@@ -26,27 +26,27 @@ pub const Error = error{
 ///  skipElem("a", name) = 1, setting name = "a"
 ///  skipElem("", name) = skipElem("////", name) = null
 ///
-fn skipElem(path: []const u8, name: *[fs.dir_size]u8) usize {
-    var curr: usize = 0;
+fn skipElem(path: []const u8, curr: usize, name: *[fs.dir_size]u8) usize {
+    var local_curr: usize = curr;
 
     // Skip Leading Slashes
-    while (curr < path.len and path[curr] == '/') {
-        curr += 1;
+    while (local_curr < path.len and path[local_curr] == '/') {
+        local_curr += 1;
     }
 
     // Check for Empty Path
-    if (curr == path.len) {
+    if (local_curr == path.len) {
         return 0;
     }
 
-    const start = curr;
+    const start = local_curr;
 
     // Find the End of the Element
-    while (curr < path.len and path[curr] != '/') {
-        curr += 1;
+    while (local_curr < path.len and path[local_curr] != '/') {
+        local_curr += 1;
     }
 
-    const len = @min(curr - start, fs.dir_size);
+    const len = @min(local_curr - start, fs.dir_size);
 
     // Copy the Element to name
     const name_ptr = @as([*]u8, name);
@@ -54,21 +54,21 @@ fn skipElem(path: []const u8, name: *[fs.dir_size]u8) usize {
     name_ptr[len] = 0;
 
     // Skip Trailing Slashes
-    while (curr < path.len and path[curr] == '/') {
-        curr += 1;
+    while (local_curr < path.len and path[local_curr] == '/') {
+        local_curr += 1;
     }
 
-    return curr;
+    return local_curr;
 }
 
 ///Look up and return the inode for a path name.
 ///If is_parent == true, return the inode for the parent and copy the final
 ///path element into name, which must have room for dir_sz bytes.
 ///Must be called inside a transaction since it calls iput().
-fn namex(path: []const u8, is_parent: bool, name: *[fs.dir_size]u8) !*Inode {
+fn namex(_path: []const u8, is_parent: bool, name: *[fs.dir_size]u8) !*Inode {
     var inode_ptr: *Inode = undefined;
 
-    if (path.len > 0 and path[0] == '/') {
+    if (_path.len > 0 and _path[0] == '/') {
         // absolute path
         inode_ptr = Inode.get(param.root_dev, fs.root_ino);
     } else {
@@ -76,7 +76,7 @@ fn namex(path: []const u8, is_parent: bool, name: *[fs.dir_size]u8) !*Inode {
         const curr_proc = Process.current() catch panic(
             @src(),
             "current proc is null, path is {s}",
-            .{path},
+            .{_path},
         );
         if (curr_proc.cwd) |cwd| {
             inode_ptr = cwd.dup();
@@ -84,14 +84,19 @@ fn namex(path: []const u8, is_parent: bool, name: *[fs.dir_size]u8) !*Inode {
             panic(
                 @src(),
                 "current proc(name={s}, pid={d})'s cwd null, path is {s}",
-                .{ curr_proc.name, curr_proc.pid, path },
+                .{ curr_proc.name, curr_proc.pid, _path },
             );
         }
     }
 
     var next: *Inode = undefined;
+    var path_offset_after_skip: usize = 0;
     while (true) : (inode_ptr = next) {
-        const path_offset_after_skip = skipElem(path, name);
+        path_offset_after_skip = skipElem(
+            _path,
+            path_offset_after_skip,
+            name,
+        );
         if (path_offset_after_skip == 0) break; // no more elements to process
 
         inode_ptr.lock();
@@ -101,7 +106,7 @@ fn namex(path: []const u8, is_parent: bool, name: *[fs.dir_size]u8) !*Inode {
             return Error.InodeIsNotDirectory;
         }
 
-        if (is_parent and path_offset_after_skip == path.len) {
+        if (is_parent and path_offset_after_skip == _path.len) {
             // Stop one level early.
             inode_ptr.unlock();
             return inode_ptr;
