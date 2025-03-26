@@ -297,7 +297,7 @@ pub fn exec(_path: []const u8, argv: []*[4096]u8) !u64 {
         } else {
             name_slice = _path;
         }
-        misc.safeStrCopy(&proc.name, name_slice, proc.name.len);
+        misc.safeStrCopy(&proc.name, name_slice);
 
         // Commit to the user image.
         const old_page_table = proc.page_table.?;

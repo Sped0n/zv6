@@ -298,7 +298,7 @@ pub fn userInit() void {
     proc.trap_frame.epc = 0; // user program counter
     proc.trap_frame.sp = riscv.pg_size; // user stack pointer
 
-    misc.safeStrCopy(&proc.name, "initcode", proc.name.len);
+    misc.safeStrCopy(&proc.name, "initcode");
     proc.cwd = path.namei("/") catch |e| panic(
         @src(),
         "path.namei failed with {s}",
@@ -377,7 +377,7 @@ pub fn fork() !u32 {
     }
     new_proc.cwd = proc.cwd.?.dup();
 
-    misc.safeStrCopy(&new_proc.name, mem.sliceTo(&proc.name, 0), new_proc.name.len);
+    misc.safeStrCopy(&new_proc.name, mem.sliceTo(&proc.name, 0));
 
     const pid = new_proc.pid;
 
