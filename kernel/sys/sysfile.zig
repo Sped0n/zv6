@@ -511,7 +511,7 @@ pub fn chdir() !u64 {
 pub fn exec() !u64 {
     const _path = try kmem.ksfba_allocator.alloc(u8, param.max_path);
     defer kmem.ksfba_allocator.free(_path);
-    var argv = try kmem.ksfba_allocator.alloc(?*[4096]u8, param.max_arg);
+    var argv = try kmem.ksfba_allocator.alloc(*[4096]u8, param.max_arg);
     defer kmem.ksfba_allocator.free(argv);
 
     const uargv = argRaw(1);
@@ -520,8 +520,7 @@ pub fn exec() !u64 {
 
     var i: usize = 0;
     defer for (0..i) |j| {
-        printf("{any}\n", .{argv[j].?});
-        kmem.free(argv[j].?);
+        kmem.free(argv[j]);
     };
     while (true) : (i += 1) {
         if (i >= argv.len) {
@@ -533,10 +532,10 @@ pub fn exec() !u64 {
         if (uarg == 0) break;
 
         argv[i] = try kmem.alloc();
-        try fetchStr(uarg, argv[i].?, riscv.pg_size);
+        try fetchStr(uarg, argv[i], riscv.pg_size);
     }
 
-    return try elf.exec(path_slice, argv);
+    return try elf.exec(path_slice, argv[0..i]);
 }
 
 pub fn pipe() !u64 {

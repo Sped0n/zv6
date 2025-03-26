@@ -57,7 +57,6 @@ pub fn fetchRaw(addr: u64, dst: *u64) !void {
 }
 
 ///Fetch the null-terminated string at addr from the current process.
-///Returns length of string, not including nul, or -1 for error.
 pub fn fetchStr(addr: u64, dst: [*c]u8, len: usize) !void {
     const proc = Process.current() catch panic(
         @src(),
@@ -141,10 +140,6 @@ pub fn syscall() void {
         .{},
     );
 
-    printf(
-        "{d} {s}: syscall ID {d}\n",
-        .{ proc.pid, proc.name, proc.trap_frame.a7 },
-    );
     const a7 = proc.trap_frame.a7;
     const a0 = &proc.trap_frame.a0;
     const syscall_id = meta.intToEnum(
@@ -283,6 +278,8 @@ pub fn syscall() void {
                 };
             },
         }
+
+        return;
     }
 
     printf(
