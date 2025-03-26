@@ -171,11 +171,11 @@ pub fn init() void {
 }
 
 ///find a free descriptor, mark it non-free, return its index.
-fn allocDesc() ?usize {
+fn allocDesc() ?u16 {
     for (0..virtio.num) |i| {
         if (disk.free[i]) {
             disk.free[i] = false;
-            return i;
+            return @truncate(i);
         }
     }
     return null;
@@ -200,20 +200,23 @@ fn freeDesc(i: usize) void {
 fn freeChain(i: usize) void {
     var local_i = i;
     while (true) {
-        const flags = disk.desc[i].flags;
-        const next = disk.desc[i].next;
+        const flags = disk.desc[local_i].flags;
+        const next = disk.desc[local_i].next;
         freeDesc(local_i);
-        if (flags == .next) {
-            local_i = next;
-        } else {
-            break;
+        switch (flags) {
+            .next, .next_and_write => {
+                local_i = next;
+            },
+            else => {
+                break;
+            },
         }
     }
 }
 
 ///allocate three descriptors (they need not be contiguous).
 ///disk transfers always use three descriptors.
-fn allocThreeDescs(indexes: *[3]usize) bool {
+fn allocThreeDescs(indexes: *[3]u16) bool {
     for (0..3) |i| {
         if (allocDesc()) |index| {
             indexes[i] = index;
@@ -236,7 +239,7 @@ pub fn diskReadWrite(buf_ptr: *Buf, is_write: bool) void {
     // data, one for a 1-byte status result.
 
     // allocate the three descriptors.
-    var indexes = [_]usize{ 0, 0, 0 };
+    var indexes = [_]u16{ 0, 0, 0 };
     while (true) {
         if (allocThreeDescs(&indexes)) {
             break;
@@ -256,12 +259,12 @@ pub fn diskReadWrite(buf_ptr: *Buf, is_write: bool) void {
     disk.desc[indexes[0]].addr = @intFromPtr(req);
     disk.desc[indexes[0]].len = @sizeOf(@TypeOf(req.*));
     disk.desc[indexes[0]].flags = .next;
-    disk.desc[indexes[0]].next = @intCast(indexes[1]);
+    disk.desc[indexes[0]].next = indexes[1];
 
     disk.desc[indexes[1]].addr = @intFromPtr(&buf_ptr.data);
     disk.desc[indexes[1]].len = fs.block_size;
     disk.desc[indexes[1]].flags = if (is_write) .next else .next_and_write;
-    disk.desc[indexes[1]].next = @intCast(indexes[2]);
+    disk.desc[indexes[1]].next = indexes[2];
 
     disk.info[indexes[0]].status = 0xff; // device writes 0 on success
     disk.desc[indexes[2]].addr = @intFromPtr(&(disk.info[indexes[0]].status));
