@@ -334,7 +334,7 @@ fn bmap(self: *Self, blockno: u32) ?u32 {
         const buf_ptr = bio.read(self.dev, addr);
         defer bio.release(buf_ptr);
 
-        const buf_data: [*]u32 = @ptrCast(@alignCast(&buf_ptr.data));
+        const buf_data: [*]align(1) u32 = @ptrCast(&buf_ptr.data);
 
         addr = buf_data[blockno];
         if (addr == 0) {
@@ -367,7 +367,7 @@ pub fn trunc(self: *Self) void {
             );
             defer bio.release(buf_ptr);
 
-            const buf_data: [*]u32 = @ptrCast(@alignCast(&buf_ptr.data));
+            const buf_data: [*]align(1) u32 = @ptrCast(&buf_ptr.data);
             for (0..fs.n_indirect) |i| {
                 if (buf_data[i] != 0) fs.block.free(
                     self.dev,
