@@ -88,7 +88,7 @@ fn loadSeg(
             );
         };
         const n: u32 = @min(size - i, riscv.pg_size);
-        if (try inode_ptr.read(
+        if (try inode_ptr.read( // NOTE: stuck at here
             false,
             phy_addr,
             offset + i,
@@ -103,7 +103,7 @@ fn flagsToPerm(flags: u32) u64 {
     return 0;
 }
 
-pub fn exec(_path: []const u8, argv: *[param.max_arg]?[*c]u8) !u64 {
+pub fn exec(_path: []const u8, argv: []*[4096]u8) !u64 {
     var size: u64 = 0;
     var inode_ptr: ?*Inode = null;
     var page_table: ?riscv.PageTable = null;
@@ -241,28 +241,29 @@ pub fn exec(_path: []const u8, argv: *[param.max_arg]?[*c]u8) !u64 {
 
         // Push argument strings, prepare rest of stack in ustack.
         var ustack = [_]u64{0} ** param.max_arg;
-        var argc: usize = 0;
-        for (argv) |opt_arg| {
-            if (opt_arg) |arg| {
-                const arg_len_with_null_terminated = mem.len(arg) + 1;
-                stack_pointer -= arg_len_with_null_terminated;
-                stack_pointer -= (stack_pointer % 16);
-                if (stack_pointer < stack_base) {
-                    _error = Error.StackOverflow;
-                    break :ok_blk;
-                }
-                vm.copyOut(
-                    page_table.?,
-                    stack_pointer,
-                    arg,
-                    arg_len_with_null_terminated,
-                ) catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-                ustack[argc] = stack_pointer;
-                argc += 1;
+        const argc: usize = argv.len;
+        for (argv) |arg| {
+            const arg_len_with_null_terminated = mem.indexOfScalar(
+                u8,
+                arg,
+                0,
+            ) orelse 0 + 1;
+            stack_pointer -= arg_len_with_null_terminated;
+            stack_pointer -= (stack_pointer % 16);
+            if (stack_pointer < stack_base) {
+                _error = Error.StackOverflow;
+                break :ok_blk;
             }
+            vm.copyOut(
+                page_table.?,
+                stack_pointer,
+                arg,
+                arg_len_with_null_terminated,
+            ) catch |e| {
+                _error = e;
+                break :ok_blk;
+            };
+            ustack[argc] = stack_pointer;
         }
         ustack[argc] = 0;
 
@@ -299,7 +300,7 @@ pub fn exec(_path: []const u8, argv: *[param.max_arg]?[*c]u8) !u64 {
         misc.safeStrCopy(&proc.name, name_slice, proc.name.len);
 
         // Commit to the user image.
-        const old_page_table = page_table.?;
+        const old_page_table = proc.page_table.?;
         proc.page_table = page_table;
         proc.size = size;
         proc.trap_frame.epc = elf_hdr.entry;
