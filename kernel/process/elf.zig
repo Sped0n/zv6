@@ -1,15 +1,15 @@
 const std = @import("std");
 const mem = std.mem;
 
-const riscv = @import("../riscv.zig");
 const Inode = @import("../fs/Inode.zig");
-const vm = @import("../memory/vm.zig");
 const log = @import("../fs/log.zig");
-const param = @import("../param.zig");
 const path = @import("../fs/path.zig");
-const Process = @import("Process.zig");
-const panic = @import("../printf.zig").panic;
+const vm = @import("../memory/vm.zig");
 const misc = @import("../misc.zig");
+const param = @import("../param.zig");
+const panic = @import("../printf.zig").panic;
+const riscv = @import("../riscv.zig");
+const Process = @import("Process.zig");
 
 pub const elf_magic = 0x464C457F;
 
@@ -88,7 +88,7 @@ fn loadSeg(
             );
         };
         const n: u32 = @min(size - i, riscv.pg_size);
-        if (try inode_ptr.read( // NOTE: stuck at here
+        if (try inode_ptr.read(
             false,
             phy_addr,
             offset + i,
@@ -97,10 +97,15 @@ fn loadSeg(
     }
 }
 
-fn flagsToPerm(flags: u32) u64 {
-    if (flags & 0x1 != 0) return @intFromEnum(riscv.PteFlag.x);
-    if (flags & 0x2 != 0) return @intFromEnum(riscv.PteFlag.w);
-    return 0;
+inline fn flagsToPerm(flags: u32) u64 {
+    var perm: u64 = 0;
+    if (flags & @intFromEnum(ProgramHeaderFlag.exec) != 0) {
+        perm = @intFromEnum(riscv.PteFlag.x);
+    }
+    if (flags & @intFromEnum(ProgramHeaderFlag.write) != 0) {
+        perm |= @intFromEnum(riscv.PteFlag.w);
+    }
+    return perm;
 }
 
 pub fn exec(_path: []const u8, argv: []*[4096]u8) !u64 {
@@ -243,11 +248,11 @@ pub fn exec(_path: []const u8, argv: []*[4096]u8) !u64 {
         var ustack = [_]u64{0} ** param.max_arg;
         const argc: usize = argv.len;
         for (argv) |arg| {
-            const arg_len_with_null_terminated = mem.indexOfScalar(
+            const arg_len_with_null_terminated = (mem.indexOfScalar(
                 u8,
                 arg,
                 0,
-            ) orelse 0 + 1;
+            ) orelse 0) + 1;
             stack_pointer -= arg_len_with_null_terminated;
             stack_pointer -= (stack_pointer % 16);
             if (stack_pointer < stack_base) {
