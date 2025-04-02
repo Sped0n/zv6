@@ -8,17 +8,15 @@ var dummy = atomic.Value(u8).init(0);
 pub fn memMove(dst: [*]u8, src: [*]const u8, n: usize) void {
     @setRuntimeSafety(false);
 
-    const src_addr = @intFromPtr(src);
-    const dst_addr = @intFromPtr(dst);
-
-    if (src_addr < dst_addr and src_addr + n > dst_addr) {
+    if (@intFromPtr(dst) >= @intFromPtr(src)) {
         var i = n;
-        while (i > 0) : (i -= 1) {
+        while (i != 0) {
+            i -= 1;
             dst[i] = src[i];
         }
     } else {
         var i: usize = 0;
-        while (i < n) : (i += 1) {
+        while (i != n) : (i += 1) {
             dst[i] = src[i];
         }
     }
