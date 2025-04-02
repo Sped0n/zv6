@@ -2,19 +2,19 @@ const mem = @import("std").mem;
 
 const SleepLock = @import("../lock/SleepLock.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
+const misc = @import("../misc.zig");
 const param = @import("../param.zig");
 const printf = @import("../printf.zig").printf;
 const assert = @import("../printf.zig").assert;
 const panic = @import("../printf.zig").panic;
+const Process = @import("../process/Process.zig");
 const bio = @import("bio.zig");
 const DiskInode = @import("dinode.zig").DiskInode;
 const fs = @import("fs.zig");
-const InodeType = @import("dinode.zig").InodeType;
 const DirEntry = fs.DirEntry;
+const InodeType = @import("dinode.zig").InodeType;
 const log = @import("log.zig");
 const Stat = @import("stat.zig").Stat;
-const Process = @import("../process/Process.zig");
-const misc = @import("../misc.zig");
 
 // Inodes ----------------------------------------------------------------------
 //
@@ -336,10 +336,10 @@ fn bmap(self: *Self, blockno: u32) ?u32 {
 
         const buf_data: [*]align(1) u32 = @ptrCast(&buf_ptr.data);
 
-        addr = buf_data[blockno];
+        addr = buf_data[local_blockno];
         if (addr == 0) {
             addr = fs.block.alloc(self.dev) orelse return null;
-            buf_data[blockno] = addr;
+            buf_data[local_blockno] = addr;
             log.write(buf_ptr);
         }
 
