@@ -6,6 +6,7 @@ const File = @import("../fs/File.zig");
 const fs = @import("../fs/fs.zig");
 const Inode = @import("../fs/Inode.zig");
 const log = @import("../fs/log.zig");
+const path = @import("../fs/path.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
 const memlayout = @import("../memlayout.zig");
 const kmem = @import("../memory/kmem.zig");
@@ -21,7 +22,6 @@ const Context = @import("context.zig").Context;
 const Cpu = @import("Cpu.zig");
 const sched = @import("scheduler.zig").sched;
 const TrapFrame = @import("trapframe.zig").TrapFrame;
-const path = @import("../fs/path.zig");
 
 const initcode = @embedFile("initcode");
 
@@ -351,8 +351,10 @@ pub fn fork() !u32 {
     assert(proc.page_table != null, @src());
     assert(proc.cwd != null, @src());
 
+    // Allocate process.
     const new_proc = try create();
 
+    // Copy user memory from parent to child.
     vm.uvmCopy(
         proc.page_table.?,
         new_proc.page_table.?,
@@ -370,6 +372,7 @@ pub fn fork() !u32 {
     // Cause fork to return 0 in the child.
     new_proc.trap_frame.a0 = 0;
 
+    // increment reference counts on open file descriptors.
     for (0..param.n_ofile) |i| {
         if (proc.ofiles[i]) |ofile| {
             new_proc.ofiles[i] = ofile.dup();
@@ -525,7 +528,7 @@ pub fn yield() void {
 
 ///A fork child's very first scheduling by scheduler()
 ///will swtch to forkret.
-pub fn forkRet() void {
+pub fn forkRet() callconv(.c) void {
     const S = struct {
         var first: bool = true;
     };

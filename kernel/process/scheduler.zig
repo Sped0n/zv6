@@ -32,15 +32,12 @@ pub fn scheduler() void {
             defer proc.lock.release();
 
             if (proc.state == .runnable) {
-                printf("proc{d}({s}) is runnable\n", .{ i, proc.name });
                 // Switch to chosen process.  It is the process's job
                 // to release its lock and then reacquire it
                 // before jumping back to us.
                 proc.state = .running;
                 cpu.proc = proc;
                 swtch(&cpu.context, &proc.context);
-
-                printf("proc{d}({s}) come back with {any}\n", .{ i, proc.name, proc.state });
 
                 // Process is done running for now.
                 // It should have changed its p->state before coming back.
