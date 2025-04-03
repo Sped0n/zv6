@@ -57,7 +57,7 @@ pub fn fetchRaw(addr: u64, dst: *u64) !void {
 }
 
 ///Fetch the null-terminated string at addr from the current process.
-pub fn fetchStr(addr: u64, dst: [*c]u8, len: usize) !void {
+pub fn fetchStr(addr: u64, dst: []u8) !void {
     const proc = Process.current() catch panic(
         @src(),
         "current proc is null",
@@ -68,60 +68,24 @@ pub fn fetchStr(addr: u64, dst: [*c]u8, len: usize) !void {
         proc.page_table.?,
         dst,
         addr,
-        @intCast(len),
     );
 }
 
-///Fetch the 64-bit system call argument.
-pub fn argRaw(n: usize) u64 {
+///Fetch the system call argument, return it as T
+pub fn argRaw(comptime T: type, n: usize) T {
+    @setRuntimeSafety(false);
     const proc = Process.current() catch panic(
         @src(),
         "current proc is null",
         .{},
     );
     switch (n) {
-        0 => return proc.trap_frame.a0,
-        1 => return proc.trap_frame.a1,
-        2 => return proc.trap_frame.a2,
-        3 => return proc.trap_frame.a3,
-        4 => return proc.trap_frame.a4,
-        5 => return proc.trap_frame.a5,
-        else => panic(@src(), "unknown id({d})", .{n}),
-    }
-}
-
-///Fetch the 64-bit system call argument, return it as i32
-pub fn argI32(n: usize) i32 {
-    const proc = Process.current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
-    switch (n) {
-        0 => return @as(*i32, @ptrCast(&proc.trap_frame.a0)).*,
-        1 => return @as(*i32, @ptrCast(&proc.trap_frame.a1)).*,
-        2 => return @as(*i32, @ptrCast(&proc.trap_frame.a2)).*,
-        3 => return @as(*i32, @ptrCast(&proc.trap_frame.a3)).*,
-        4 => return @as(*i32, @ptrCast(&proc.trap_frame.a4)).*,
-        5 => return @as(*i32, @ptrCast(&proc.trap_frame.a5)).*,
-        else => panic(@src(), "unknown id({d})", .{n}),
-    }
-}
-
-///Fetch the 64-bit system call argument, return it as u32
-pub fn argU32(n: usize) u32 {
-    const proc = Process.current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
-    switch (n) {
-        0 => return @as(*u32, @ptrCast(&proc.trap_frame.a0)).*,
-        1 => return @as(*u32, @ptrCast(&proc.trap_frame.a1)).*,
-        2 => return @as(*u32, @ptrCast(&proc.trap_frame.a2)).*,
-        3 => return @as(*u32, @ptrCast(&proc.trap_frame.a3)).*,
-        4 => return @as(*u32, @ptrCast(&proc.trap_frame.a4)).*,
-        5 => return @as(*u32, @ptrCast(&proc.trap_frame.a5)).*,
+        0 => return @intCast(proc.trap_frame.a0),
+        1 => return @intCast(proc.trap_frame.a1),
+        2 => return @intCast(proc.trap_frame.a2),
+        3 => return @intCast(proc.trap_frame.a3),
+        4 => return @intCast(proc.trap_frame.a4),
+        5 => return @intCast(proc.trap_frame.a5),
         else => panic(@src(), "unknown id({d})", .{n}),
     }
 }
@@ -129,8 +93,8 @@ pub fn argU32(n: usize) u32 {
 ///Fetch the nth word-sized system call argument as a null-terminated string.
 ///Copies into buf, at most max.
 pub fn argStr(n: usize, buf: []u8) !void {
-    const addr = argRaw(n);
-    return fetchStr(addr, @as([*c]u8, @ptrCast(buf.ptr)), buf.len);
+    const addr: u64 = argRaw(u64, n);
+    return fetchStr(addr, buf);
 }
 
 pub fn syscall() void {
@@ -153,6 +117,11 @@ pub fn syscall() void {
         @as(*i64, @ptrCast(a0)).* = -1;
         return;
     };
+
+    // printf(
+    //     "\n{d}({s}): syscall {s}\n",
+    //     .{ proc.pid, proc.name, std.enums.tagName(SysCallID, syscall_id) orelse "null" },
+    // );
 
     var _error: anyerror = undefined;
     ok_blk: {
@@ -283,8 +252,8 @@ pub fn syscall() void {
     }
 
     printf(
-        "syscall({d}) failed with {s}\n",
-        .{ a7, @errorName(_error) },
+        "\nsyscall({s}) failed with {s}\n",
+        .{ std.enums.tagName(SysCallID, syscall_id) orelse "null", @errorName(_error) },
     );
     @as(*i64, @ptrCast(a0)).* = -1;
 }
