@@ -96,7 +96,7 @@ pub fn dup(self: *Self) *Self {
 ///Close file f.
 ///Decrement ref count, close when reaches 0.
 pub fn close(self: *Self) void {
-    var file: Self = undefined;
+    var tmp: Self = undefined;
 
     {
         file_table.lock.acquire();
@@ -107,22 +107,22 @@ pub fn close(self: *Self) void {
         self.ref -= 1;
         if (self.ref > 0) return;
 
-        file = self.*;
+        tmp = self.*;
         self.ref = 0;
         self.type = .none;
     }
 
-    switch (file.type) {
+    switch (tmp.type) {
         .pipe => {
-            assert(file.pipe != null, @src());
-            file.pipe.?.close(file.writable);
+            assert(tmp.pipe != null, @src());
+            tmp.pipe.?.close(tmp.writable);
         },
         .inode, .device => {
-            assert(file.inode != null, @src());
+            assert(tmp.inode != null, @src());
             log.beginOp();
             defer log.endOp();
 
-            file.inode.?.put();
+            tmp.inode.?.put();
         },
         .none => {},
     }

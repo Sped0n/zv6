@@ -8,8 +8,8 @@ const printf = @import("../printf.zig").printf;
 const assert = @import("../printf.zig").assert;
 const panic = @import("../printf.zig").panic;
 const Process = @import("../process/Process.zig");
-const bio = @import("bio.zig");
 const DiskInode = @import("dinode.zig").DiskInode;
+const Buf = @import("Buf.zig");
 const fs = @import("fs.zig");
 const DirEntry = fs.DirEntry;
 const InodeType = @import("dinode.zig").InodeType;
@@ -176,20 +176,20 @@ pub fn get(dev: u32, inum: u32) *Self {
 ///or null if there is no free inode.
 pub fn alloc(dev: u32, _type: InodeType) ?*Self {
     for (1..fs.super_block.n_inodes) |inum| {
-        const buf_ptr = bio.read(
+        const buf = Buf.readFrom(
             dev,
             fs.super_block.getInodeBlockNo(@intCast(inum)),
         );
-        defer bio.release(buf_ptr);
+        defer buf.release();
 
         const disk_inode_ptr = &@as(
             [*]align(1) DiskInode,
-            @ptrCast(&buf_ptr.data),
+            @ptrCast(&buf.data),
         )[inum % fs.inodes_per_block];
         if (disk_inode_ptr.type == .free) { // a free node
             @memset(@as([*]u8, @ptrCast(disk_inode_ptr))[0..@sizeOf(DiskInode)], 0);
             disk_inode_ptr.type = _type;
-            log.write(buf_ptr); // mark it allocated on the disk
+            log.write(buf); // mark it allocated on the disk
             return get(dev, @intCast(inum));
         }
     }
@@ -202,18 +202,18 @@ pub fn alloc(dev: u32, _type: InodeType) ?*Self {
 ///that lives on disk.
 ///Caller must hold (*Inode)->lock.
 pub fn update(self: *Self) void {
-    const buf_ptr = bio.read(
+    const buf = Buf.readFrom(
         self.dev,
         fs.super_block.getInodeBlockNo(self.inum),
     );
-    defer bio.release(buf_ptr);
+    defer buf.release();
 
     const disk_inode_ptr = &@as(
         [*]align(1) DiskInode,
-        @ptrCast(&buf_ptr.data),
+        @ptrCast(&buf.data),
     )[self.inum % fs.inodes_per_block];
     disk_inode_ptr.* = self.dinode;
-    log.write(buf_ptr);
+    log.write(buf);
 }
 
 ///Increment reference count for *Inode.
@@ -236,15 +236,15 @@ pub fn lock(self: *Self) void {
     if (self.valid) return;
 
     {
-        const buf_ptr = bio.read(
+        const buf = Buf.readFrom(
             self.dev,
             fs.super_block.getInodeBlockNo(self.inum),
         );
-        defer bio.release(buf_ptr);
+        defer buf.release();
 
         const disk_inode_ptr = &@as(
             [*]align(1) DiskInode,
-            @ptrCast(&buf_ptr.data),
+            @ptrCast(&buf.data),
         )[self.inum % fs.inodes_per_block];
         (&self.dinode).* = disk_inode_ptr.*;
     }
@@ -283,7 +283,7 @@ pub fn put(self: *Self) void {
             inode_table.lock.acquire();
         }
 
-        self.trunc();
+        self.truncate();
         self.dinode.type = .free;
         self.update();
         self.valid = false;
@@ -331,16 +331,16 @@ fn bmap(self: *Self, blockno: u32) ?u32 {
             self.dinode.addrs[fs.n_direct] = addr;
         }
 
-        const buf_ptr = bio.read(self.dev, addr);
-        defer bio.release(buf_ptr);
+        const buf = Buf.readFrom(self.dev, addr);
+        defer buf.release();
 
-        const buf_data: [*]align(1) u32 = @ptrCast(&buf_ptr.data);
+        const buf_data: [*]align(1) u32 = @ptrCast(&buf.data);
 
         addr = buf_data[local_blockno];
         if (addr == 0) {
             addr = fs.block.alloc(self.dev) orelse return null;
             buf_data[local_blockno] = addr;
-            log.write(buf_ptr);
+            log.write(buf);
         }
 
         return addr;
@@ -351,7 +351,7 @@ fn bmap(self: *Self, blockno: u32) ?u32 {
 
 // Truncate inode (discard contents).
 // Caller must hold ip->lock.
-pub fn trunc(self: *Self) void {
+pub fn truncate(self: *Self) void {
     for (0..fs.n_direct) |i| {
         if (self.dinode.addrs[i] != 0) {
             fs.block.free(self.dev, self.dinode.addrs[i]);
@@ -361,13 +361,13 @@ pub fn trunc(self: *Self) void {
 
     if (self.dinode.addrs[fs.n_direct] != 0) {
         {
-            const buf_ptr = bio.read(
+            const buf = Buf.readFrom(
                 self.dev,
                 self.dinode.addrs[fs.n_direct],
             );
-            defer bio.release(buf_ptr);
+            defer buf.release();
 
-            const buf_data: [*]align(1) u32 = @ptrCast(&buf_ptr.data);
+            const buf_data: [*]align(1) u32 = @ptrCast(&buf.data);
             for (0..fs.n_indirect) |i| {
                 if (buf_data[i] != 0) fs.block.free(
                     self.dev,
@@ -426,8 +426,8 @@ pub fn read(
             local_offset / fs.block_size,
         ) orelse return Error.BMapFailed;
 
-        const buf_ptr = bio.read(self.dev, blockno);
-        defer bio.release(buf_ptr);
+        const buf = Buf.readFrom(self.dev, blockno);
+        defer buf.release();
 
         const modded_local_offset = local_offset % fs.block_size;
         read_len = @min(
@@ -437,7 +437,7 @@ pub fn read(
         try Process.eitherCopyOut(
             is_user_dst,
             local_dst_addr,
-            buf_ptr.data[modded_local_offset..].ptr,
+            buf.data[modded_local_offset..].ptr,
             read_len,
         );
     }
@@ -483,15 +483,15 @@ pub fn write(
             break;
         };
 
-        const buf_ptr = bio.read(self.dev, blockno);
-        defer bio.release(buf_ptr);
+        const buf = Buf.readFrom(self.dev, blockno);
+        defer buf.release();
 
         write_len = @min(
             len - total,
             fs.block_size - local_offset % fs.block_size,
         );
         Process.eitherCopyIn(
-            buf_ptr.data[local_offset % fs.block_size ..].ptr,
+            buf.data[local_offset % fs.block_size ..].ptr,
             is_user_src,
             local_src_addr,
             write_len,
@@ -499,7 +499,7 @@ pub fn write(
             _error = e;
             break;
         };
-        log.write(buf_ptr);
+        log.write(buf);
     }
 
     if (offset > self.dinode.size) self.dinode.size = offset;

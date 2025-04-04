@@ -1,5 +1,5 @@
 const memMove = @import("../misc.zig").memMove;
-const bio = @import("bio.zig");
+const Buf = @import("Buf.zig");
 const fs = @import("fs.zig");
 
 ///Disk layout:
@@ -31,10 +31,10 @@ pub const SuperBlock = extern struct {
     }
 
     pub fn read(self: *Self, dev: u32) void {
-        const buf_ptr = bio.read(dev, 1);
-        defer bio.release(buf_ptr);
+        const buf = Buf.readFrom(dev, 1);
+        defer buf.release();
 
-        memMove(@as([*]u8, @ptrCast(self)), &buf_ptr.data, @sizeOf(Self));
+        memMove(@as([*]u8, @ptrCast(self)), &buf.data, @sizeOf(Self));
     }
 
     pub inline fn getBitmapBlockNo(self: *Self, blockno: u32) u32 {

@@ -5,7 +5,6 @@ const param = @import("../param.zig");
 const assert = @import("../printf.zig").assert;
 const panic = @import("../printf.zig").panic;
 const Process = @import("../process/Process.zig");
-const bio = @import("bio.zig");
 const Buf = @import("Buf.zig");
 const fs = @import("fs.zig");
 const SuperBlock = @import("SuperBlock.zig").SuperBlock;
@@ -75,45 +74,45 @@ pub fn init(dev: u32, super_block: *SuperBlock) void {
 fn installTrans(recovering: bool) void {
     var tail: u32 = 0;
     while (tail < log.header.n) : (tail += 1) {
-        const log_buf_ptr = bio.read(log.dev, log.start + tail + 1);
-        const disk_buf_ptr = bio.read(log.dev, log.header.block[tail]);
+        const log_buf = Buf.readFrom(log.dev, log.start + tail + 1);
+        const disk_buf = Buf.readFrom(log.dev, log.header.block[tail]);
         defer {
-            bio.release(log_buf_ptr);
-            bio.release(disk_buf_ptr);
+            log_buf.release();
+            disk_buf.release();
         }
 
-        memMove(&disk_buf_ptr.data, &log_buf_ptr.data, fs.block_size);
-        bio.write(disk_buf_ptr);
-        if (!recovering) bio.unPin(disk_buf_ptr);
+        memMove(&disk_buf.data, &log_buf.data, fs.block_size);
+        disk_buf.writeBack();
+        if (!recovering) disk_buf.unPin();
     }
 }
 
 ///Read the log header from disk into the in-memory log header
 fn readHead() void {
-    const buf_ptr = bio.read(log.dev, log.start);
-    defer bio.release(buf_ptr);
+    const buf = Buf.readFrom(log.dev, log.start);
+    defer buf.release();
 
     const log_header = @as(
         [*]u8,
         @ptrCast(&log.header),
     )[0..@sizeOf(@TypeOf(log.header))];
-    misc.memMove(log_header, &buf_ptr.data, log_header.len);
+    misc.memMove(log_header, &buf.data, log_header.len);
 }
 
 ///Write in-memory log header to disk.
 ///This is the true point at which the
 ///current transaction commits.
 fn writeHead() void {
-    const buf_ptr = bio.read(log.dev, log.start);
-    defer bio.release(buf_ptr);
+    const buf = Buf.readFrom(log.dev, log.start);
+    defer buf.release();
 
     const log_header = @as(
         [*]u8,
         @ptrCast(&log.header),
     )[0..@sizeOf(@TypeOf(log.header))];
-    misc.memMove(&buf_ptr.data, log_header, log_header.len);
+    misc.memMove(&buf.data, log_header, log_header.len);
 
-    bio.write(buf_ptr);
+    buf.writeBack();
 }
 
 fn recoverFromLog() void {
@@ -178,18 +177,18 @@ pub fn endOp() void {
 fn writeLog() void {
     var tail: u32 = 0;
     while (tail < log.header.n) : (tail += 1) {
-        const to = bio.read(log.dev, log.start + tail + 1);
-        const from = bio.read(
+        const to = Buf.readFrom(log.dev, log.start + tail + 1);
+        const from = Buf.readFrom(
             log.dev,
             log.header.block[tail],
         );
         defer {
-            bio.release(from);
-            bio.release(to);
+            to.release();
+            from.release();
         }
 
         memMove(&to.data, &from.data, fs.block_size);
-        bio.write(to); // write the log
+        to.writeBack(); // write the log
     }
 }
 
@@ -203,16 +202,16 @@ fn commit() void {
     writeHead(); // erase the transcation from the log
 }
 
-// Caller has modified b->data and is done with the buffer.
-// Record the block number and pin in the cache by increasing refcnt.
-// commit()/write_log() will do the disk write.
-//
-// log_write() replaces bwrite(); a typical use is:
-//   bp = bread(...)
-//   modify bp->data[]
-//   log_write(bp)
-//   brelse(bp)
-pub fn write(buf_ptr: *Buf) void {
+///Caller has modified b->data and is done with the buffer.
+///Record the block number and pin in the cache by increasing refcnt.
+///commit()/writeLog() will do the disk write.
+///
+///log.write() replaces Buf.writeBack(); a typical use is:
+///  bp = bread(...)
+///  modify bp->data[]
+///  log_write(bp)
+///  brelse(bp)
+pub fn write(buf: *Buf) void {
     log.lock.acquire();
     defer log.lock.release();
 
@@ -223,11 +222,11 @@ pub fn write(buf_ptr: *Buf) void {
 
     var i: u32 = 0;
     while (i < log.header.n) : (i += 1) {
-        if (log.header.block[i] == buf_ptr.blockno) break; // log absorption
+        if (log.header.block[i] == buf.blockno) break; // log absorption
     }
-    log.header.block[i] = buf_ptr.blockno;
+    log.header.block[i] = buf.blockno;
     if (i == log.header.n) { // Add new block to log?
-        bio.pin(buf_ptr);
+        buf.pin();
         log.header.n += 1;
     }
 }

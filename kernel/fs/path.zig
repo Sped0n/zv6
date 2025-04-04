@@ -26,7 +26,7 @@ pub const Error = error{
 ///  skipElem("a", name) = 1, setting name = "a"
 ///  skipElem("", name) = skipElem("////", name) = null
 ///
-fn skipElem(path: []const u8, curr: usize, name: *[fs.dir_size]u8) usize {
+fn skipElem(path: []const u8, curr: usize, name_buffer: []u8) usize {
     var local_curr: usize = curr;
 
     // Skip Leading Slashes
@@ -46,12 +46,11 @@ fn skipElem(path: []const u8, curr: usize, name: *[fs.dir_size]u8) usize {
         local_curr += 1;
     }
 
-    const len = @min(local_curr - start, fs.dir_size);
+    const len = @min(local_curr - start, fs.dir_size - 1);
 
     // Copy the Element to name
-    const name_ptr = @as([*]u8, name);
-    misc.memMove(name_ptr, path[start .. start + len].ptr, len);
-    name_ptr[len] = 0;
+    misc.memMove(name_buffer.ptr, path[start .. start + len].ptr, len);
+    name_buffer[len] = 0;
 
     // Skip Trailing Slashes
     while (local_curr < path.len and path[local_curr] == '/') {
@@ -65,7 +64,7 @@ fn skipElem(path: []const u8, curr: usize, name: *[fs.dir_size]u8) usize {
 ///If is_parent == true, return the inode for the parent and copy the final
 ///path element into name, which must have room for dir_sz bytes.
 ///Must be called inside a transaction since it calls iput().
-fn namex(_path: []const u8, is_parent: bool, name: *[fs.dir_size]u8) !*Inode {
+fn lookup(_path: []const u8, comptime is_parent: bool, name_buffer: []u8) !*Inode {
     var inode_ptr: *Inode = undefined;
 
     if (_path.len > 0 and _path[0] == '/') {
@@ -95,7 +94,7 @@ fn namex(_path: []const u8, is_parent: bool, name: *[fs.dir_size]u8) !*Inode {
         path_offset_after_skip = skipElem(
             _path,
             path_offset_after_skip,
-            name,
+            name_buffer,
         );
         if (path_offset_after_skip == 0) break; // no more elements to process
 
@@ -113,7 +112,7 @@ fn namex(_path: []const u8, is_parent: bool, name: *[fs.dir_size]u8) !*Inode {
         }
 
         if (inode_ptr.dirLookUp(
-            mem.sliceTo(name, 0),
+            mem.sliceTo(name_buffer, 0),
             null,
         )) |n| {
             next = n;
@@ -133,11 +132,11 @@ fn namex(_path: []const u8, is_parent: bool, name: *[fs.dir_size]u8) !*Inode {
     return inode_ptr;
 }
 
-pub fn namei(path: []const u8) !*Inode {
-    var name: [fs.dir_size]u8 = [_]u8{0} ** fs.dir_size;
-    return namex(path, false, &name);
+pub fn toInode(path: []const u8) !*Inode {
+    var name_buffer: [fs.dir_size]u8 = [_]u8{0} ** fs.dir_size;
+    return lookup(path, false, &name_buffer);
 }
 
-pub fn nameiParent(path: []const u8, name: *[fs.dir_size]u8) !*Inode {
-    return namex(path, true, name);
+pub fn toParentInode(path: []const u8, name_buffer: []u8) !*Inode {
+    return lookup(path, true, name_buffer);
 }

@@ -228,8 +228,8 @@ fn allocThreeDescs(indexes: *[3]u16) bool {
     return true;
 }
 
-pub fn diskReadWrite(buf_ptr: *Buf, is_write: bool) void {
-    const sector = buf_ptr.blockno * (fs.block_size / 512);
+pub fn diskReadWrite(buf: *Buf, is_write: bool) void {
+    const sector = buf.blockno * (fs.block_size / 512);
 
     disk.lock.acquire();
     defer disk.lock.release();
@@ -261,7 +261,7 @@ pub fn diskReadWrite(buf_ptr: *Buf, is_write: bool) void {
     disk.desc[indexes[0]].flags = .next;
     disk.desc[indexes[0]].next = indexes[1];
 
-    disk.desc[indexes[1]].addr = @intFromPtr(&buf_ptr.data);
+    disk.desc[indexes[1]].addr = @intFromPtr(&buf.data);
     disk.desc[indexes[1]].len = fs.block_size;
     disk.desc[indexes[1]].flags = if (is_write) .next else .next_and_write;
     disk.desc[indexes[1]].next = indexes[2];
@@ -273,8 +273,8 @@ pub fn diskReadWrite(buf_ptr: *Buf, is_write: bool) void {
     disk.desc[indexes[2]].next = 0;
 
     // record struct Buf for intr().
-    buf_ptr.owned_by_disk = true;
-    disk.info[indexes[0]].buf = buf_ptr;
+    buf.owned_by_disk = true;
+    disk.info[indexes[0]].buf = buf;
 
     // tell the device the first index in our chain of descriptors.
     disk.avail.ring[disk.avail.index % virtio.num] = @intCast(indexes[0]);
@@ -289,8 +289,8 @@ pub fn diskReadWrite(buf_ptr: *Buf, is_write: bool) void {
     // panic(@src(), "hello", .{});
 
     // Wait for intr() to say request is finished.
-    while (buf_ptr.owned_by_disk) Process.sleep(
-        @intFromPtr(buf_ptr),
+    while (buf.owned_by_disk) Process.sleep(
+        @intFromPtr(buf),
         &disk.lock,
     );
 
