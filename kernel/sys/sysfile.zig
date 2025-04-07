@@ -594,7 +594,7 @@ pub fn pipe() !u64 {
     };
     vm.copyOut(
         proc.page_table.?,
-        fd_array,
+        fd_array + @sizeOf(@TypeOf(fd0)),
         @as([*]const u8, @ptrCast(&fd1)),
         @sizeOf(@TypeOf(fd1)),
     ) catch |e| {
