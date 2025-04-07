@@ -703,12 +703,12 @@ pub fn eitherCopyIn(dst: [*]u8, is_user_src: bool, src_addr: u64, len: u64) !voi
 ///Print a process listing to console.  For debugging.
 ///Runs when user types ^P on console.
 ///No lock to avoid wedging a stuck machine further.
-pub fn procDump() void {
-    printf("\n");
+pub fn dump() void {
+    printf("\n", .{});
     for (0..param.n_proc) |i| {
         const proc = procs[i];
 
         if (proc.state == .unused) continue;
-        printf("{d} {s} {s}\n", .{ proc.pid, @tagName(proc.state), proc.name });
+        printf("{d} {s: ^10} {s}\n", .{ proc.pid, @tagName(proc.state), proc.name });
     }
 }

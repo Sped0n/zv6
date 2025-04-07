@@ -112,6 +112,15 @@ pub fn intr(char: u8) void {
     defer lock.release();
 
     switch (char) {
+        ctrl('P') => Process.dump(),
+        ctrl('U') => {
+            while (edit_index != write_index and
+                buffer[(edit_index - 1) % buffer_size] != '\n')
+            {
+                edit_index -= 1;
+                putChar(backspace);
+            }
+        },
         backspace, delete => {
             if (edit_index != write_index) {
                 edit_index -= 1;
