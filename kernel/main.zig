@@ -10,21 +10,19 @@ const Process = @import("process/Process.zig");
 const scheduler = @import("process/scheduler.zig");
 const riscv = @import("riscv.zig");
 const trap = @import("trap.zig");
-const bio = @import("fs/bio.zig");
+const Buf = @import("fs/Buf.zig");
 const Inode = @import("fs/Inode.zig");
 const File = @import("fs/File.zig");
 const virtio_disk = @import("driver/virtio_disk.zig");
 
 var started = false;
 
-pub fn main() void {
+pub fn main() callconv(.c) void {
     if (Cpu.id() == 0) {
         console.init();
         printf.init();
-        printf.printf("{*}\n", .{&main});
         printf.printf("{{zv6}} {s}\n", .{"hello world"});
         kmem.init();
-
         vm.kvmInit();
         vm.kvmInitHart();
         Process.init();
@@ -32,7 +30,7 @@ pub fn main() void {
         trap.initHart();
         plic.init();
         plic.initHart();
-        bio.init();
+        Buf.init();
         Inode.init();
         File.init();
         virtio_disk.init();
