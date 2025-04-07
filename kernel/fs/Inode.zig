@@ -8,8 +8,8 @@ const printf = @import("../printf.zig").printf;
 const assert = @import("../printf.zig").assert;
 const panic = @import("../printf.zig").panic;
 const Process = @import("../process/Process.zig");
-const DiskInode = @import("dinode.zig").DiskInode;
 const Buf = @import("Buf.zig");
+const DiskInode = @import("dinode.zig").DiskInode;
 const fs = @import("fs.zig");
 const DirEntry = fs.DirEntry;
 const InodeType = @import("dinode.zig").InodeType;
@@ -557,8 +557,8 @@ pub fn dirLookUp(self: *Self, name: []const u8, offset_ptr: ?*u32) ?*Self {
 // Returns 0 on success, -1 on failure (e.g. out of disk blocks).
 pub fn dirLink(self: *Self, name: []const u8, inum: u32) !void {
     // Check that name is not present.
-    if (self.dirLookUp(name, null)) |inode_ptr| {
-        inode_ptr.put();
+    if (self.dirLookUp(name, null)) |inode| {
+        inode.put();
         return Error.DirNamePresent;
     }
 
