@@ -107,12 +107,12 @@ pub fn mapStacks(kpgtbl: riscv.PageTable) !void {
     // NOTE: don't try to iterate on uninitialized procs
     // see https://github.com/ziglang/zig/issues/13934
     for (0..param.n_proc) |i| {
-        const page_ptr = try kmem.alloc();
+        const page = try kmem.alloc();
         const virt_addr = memlayout.kernelStack(i);
         vm.kvmMap(
             kpgtbl,
             virt_addr,
-            @intFromPtr(page_ptr),
+            @intFromPtr(page),
             riscv.pg_size,
             @intFromEnum(
                 riscv.PteFlag.r,
@@ -130,10 +130,9 @@ pub fn init() void {
     pid_lock.init("nextpid");
     wait_lock.init("wait_lock");
     for (0..param.n_proc) |i| {
-        const p = &(procs[i]);
-        p.lock.init("proc");
-        p.state = .unused;
-        p.kstack = memlayout.kernelStack(i);
+        const proc = &(procs[i]);
+        proc.lock.init("proc");
+        proc.kstack = memlayout.kernelStack(i);
     }
 }
 
@@ -142,9 +141,8 @@ pub fn current() !*Self {
     SpinLock.pushOff();
     defer SpinLock.popOff();
 
-    const c = Cpu.current();
-    if (c.proc) |p| {
-        return p;
+    if (Cpu.current().proc) |proc| {
+        return proc;
     } else {
         return Error.CurrentProcIsNull;
     }
@@ -155,8 +153,7 @@ pub fn currentOrNull() ?*Self {
     SpinLock.pushOff();
     defer SpinLock.popOff();
 
-    const c = Cpu.current();
-    return c.proc;
+    return Cpu.current().proc;
 }
 
 pub fn allocPid() u32 {
@@ -227,7 +224,7 @@ fn free(self: *Self) void {
     self.size = 0;
     self.pid = 0;
     self.parent = null;
-    self.name[0] = 0;
+    @memset(&self.name, 0);
     self.chan_addr = 0;
     self.killed = false;
     self.exit_state = 0;
@@ -283,7 +280,7 @@ pub fn freePageTable(page_table: riscv.PageTable, size: u64) void {
 pub fn userInit() void {
     const proc = Self.create() catch |e| panic(
         @src(),
-        "Proc.create failed with {s}",
+        "Process.create failed with {s}",
         .{@errorName(e)},
     );
     assert(proc.page_table != null, @src());
@@ -299,7 +296,7 @@ pub fn userInit() void {
     proc.trap_frame.sp = riscv.pg_size; // user stack pointer
 
     misc.safeStrCopy(&proc.name, "initcode");
-    proc.cwd = path.namei("/") catch |e| panic(
+    proc.cwd = path.toInode("/") catch |e| panic(
         @src(),
         "path.namei failed with {s}",
         .{@errorName(e)},
@@ -347,52 +344,63 @@ pub fn fork() !u32 {
         "current proc is null",
         .{},
     );
-
     assert(proc.page_table != null, @src());
     assert(proc.cwd != null, @src());
 
-    // Allocate process.
-    const new_proc = try create();
+    var new_proc: *Self = undefined;
+    var pid: u32 = 0;
 
-    // Copy user memory from parent to child.
-    vm.uvmCopy(
-        proc.page_table.?,
-        new_proc.page_table.?,
-        proc.size,
-    ) catch |e| {
-        free(new_proc);
-        new_proc.lock.release();
-        return e;
-    };
-    new_proc.size = proc.size;
+    {
+        // Allocate process.
+        new_proc = try create();
+        defer new_proc.lock.release();
 
-    // copy saved user register.
-    new_proc.trap_frame.* = proc.trap_frame.*;
+        // Copy user memory from parent to child.
+        vm.uvmCopy(
+            proc.page_table.?,
+            new_proc.page_table.?,
+            proc.size,
+        ) catch |e| {
+            free(new_proc);
+            new_proc.lock.release();
+            return e;
+        };
+        new_proc.size = proc.size;
 
-    // Cause fork to return 0 in the child.
-    new_proc.trap_frame.a0 = 0;
+        // Copy saved user register.
+        new_proc.trap_frame.* = proc.trap_frame.*;
 
-    // increment reference counts on open file descriptors.
-    for (0..param.n_ofile) |i| {
-        if (proc.ofiles[i]) |ofile| {
-            new_proc.ofiles[i] = ofile.dup();
+        // Cause fork to return 0 in the child.
+        new_proc.trap_frame.a0 = 0;
+
+        // Increment reference counts on open file descriptors.
+        for (0..param.n_ofile) |i| {
+            if (proc.ofiles[i]) |ofile| {
+                new_proc.ofiles[i] = ofile.dup();
+            }
         }
+        new_proc.cwd = proc.cwd.?.dup();
+
+        // Copy name from parent process.
+        misc.safeStrCopy(&new_proc.name, mem.sliceTo(&proc.name, 0));
+
+        // Create a copy of PID inside lock guard.
+        pid = new_proc.pid;
     }
-    new_proc.cwd = proc.cwd.?.dup();
 
-    misc.safeStrCopy(&new_proc.name, mem.sliceTo(&proc.name, 0));
+    {
+        wait_lock.acquire();
+        defer wait_lock.release();
 
-    const pid = new_proc.pid;
+        new_proc.parent = proc;
+    }
 
-    new_proc.lock.release();
+    {
+        new_proc.lock.acquire();
+        defer new_proc.lock.release();
 
-    wait_lock.acquire();
-    new_proc.parent = proc;
-    wait_lock.release();
-
-    new_proc.lock.acquire();
-    new_proc.state = .runnable;
-    new_proc.lock.release();
+        new_proc.state = .runnable;
+    }
 
     return pid;
 }
@@ -436,6 +444,7 @@ pub fn exit(status: i32) void {
 
         proc.cwd.?.put();
     }
+
     proc.cwd = null;
 
     {
@@ -575,6 +584,11 @@ pub fn sleep(chan_addr: u64, lock: *SpinLock) void {
 
     proc.lock.acquire(); // DOC: sleeplock 1
     lock.release();
+    defer {
+        // Reacquire original lock.
+        proc.lock.release();
+        lock.acquire();
+    }
 
     // Go to sleep.
     proc.chan_addr = chan_addr;
@@ -584,10 +598,6 @@ pub fn sleep(chan_addr: u64, lock: *SpinLock) void {
 
     // Tidy up.
     proc.chan_addr = 0;
-
-    // Reacquire original lock.
-    proc.lock.release();
-    lock.acquire();
 }
 
 ///Wake up all processes sleeping on chan.
@@ -599,8 +609,8 @@ pub fn wakeUp(chan_addr: u64) void {
             proc.lock.acquire();
             defer proc.lock.release();
 
-            if (proc.state == .sleeping and proc.chan_addr == chan_addr)
-                proc.state = .runnable;
+            if (proc.state == .sleeping and
+                proc.chan_addr == chan_addr) proc.state = .runnable;
         }
     }
 }

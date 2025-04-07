@@ -9,7 +9,12 @@ context: Context, // swtch() here to enter scheduler().
 noff: u32, // Depth of push_off() nesting.
 intr_enable: bool, // Were interrupts enabled before push_off()?
 
-var cpus: [param.n_cpu]Self = undefined; // container level variable
+var cpus: [param.n_cpu]Self = [_]Self{Self{
+    .proc = null,
+    .context = undefined,
+    .noff = 0,
+    .intr_enable = false,
+}} ** param.n_cpu; // container level variable
 
 const Self = @This();
 

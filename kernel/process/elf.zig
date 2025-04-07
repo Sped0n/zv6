@@ -71,7 +71,7 @@ pub const Error = error{
 fn loadSeg(
     page_table: riscv.PageTable,
     virt_addr: u64,
-    inode_ptr: *Inode,
+    inode: *Inode,
     offset: u32,
     size: u32,
 ) !void {
@@ -88,7 +88,7 @@ fn loadSeg(
             );
         };
         const n: u32 = @min(size - i, riscv.pg_size);
-        if (try inode_ptr.read(
+        if (try inode.read(
             false,
             phy_addr,
             offset + i,
@@ -110,7 +110,7 @@ inline fn flagsToPerm(flags: u32) u64 {
 
 pub fn exec(_path: []const u8, argv: []*[4096]u8) !u64 {
     var size: u64 = 0;
-    var inode_ptr: ?*Inode = null;
+    var inode: ?*Inode = null;
     var page_table: ?riscv.PageTable = null;
 
     var _error: anyerror = undefined;
@@ -125,11 +125,11 @@ pub fn exec(_path: []const u8, argv: []*[4096]u8) !u64 {
 
         log.beginOp();
 
-        inode_ptr = try path.namei(_path);
-        inode_ptr.?.lock();
+        inode = try path.toInode(_path);
+        inode.?.lock();
 
         // Check ELF header.
-        if (inode_ptr.?.read(
+        if (inode.?.read(
             false,
             @intFromPtr(&elf_hdr),
             0,
@@ -162,7 +162,7 @@ pub fn exec(_path: []const u8, argv: []*[4096]u8) !u64 {
             offset += prog_hdr_size;
         }) {
             // Read program header
-            if (inode_ptr.?.read(
+            if (inode.?.read(
                 false,
                 @intFromPtr(&prog_hdr),
                 @intCast(offset),
@@ -207,7 +207,7 @@ pub fn exec(_path: []const u8, argv: []*[4096]u8) !u64 {
             loadSeg(
                 page_table.?,
                 prog_hdr.virt_addr,
-                inode_ptr.?,
+                inode.?,
                 @intCast(prog_hdr.offset),
                 @intCast(prog_hdr.file_size),
             ) catch |e| {
@@ -215,9 +215,9 @@ pub fn exec(_path: []const u8, argv: []*[4096]u8) !u64 {
                 break :ok_blk;
             };
         }
-        inode_ptr.?.unlockPut();
+        inode.?.unlockPut();
         log.endOp();
-        inode_ptr = null;
+        inode = null;
 
         proc = Process.current() catch panic(
             @src(),
@@ -318,8 +318,8 @@ pub fn exec(_path: []const u8, argv: []*[4096]u8) !u64 {
     if (page_table) |pgtbl| {
         Process.freePageTable(pgtbl, size);
     }
-    if (inode_ptr) |ip| {
-        ip.unlockPut();
+    if (inode) |_inode| {
+        _inode.unlockPut();
         log.endOp();
     }
     return _error;
