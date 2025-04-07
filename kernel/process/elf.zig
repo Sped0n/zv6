@@ -247,7 +247,7 @@ pub fn exec(_path: []const u8, argv: []*[4096]u8) !u64 {
         // Push argument strings, prepare rest of stack in ustack.
         var ustack = [_]u64{0} ** param.max_arg;
         const argc: usize = argv.len;
-        for (argv) |arg| {
+        for (argv, 0..) |arg, j| {
             const arg_len_with_null_terminated = (mem.indexOfScalar(
                 u8,
                 arg,
@@ -268,7 +268,7 @@ pub fn exec(_path: []const u8, argv: []*[4096]u8) !u64 {
                 _error = e;
                 break :ok_blk;
             };
-            ustack[argc] = stack_pointer;
+            ustack[j] = stack_pointer;
         }
         ustack[argc] = 0;
 
