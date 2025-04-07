@@ -161,28 +161,34 @@ pub fn link() !u64 {
     var _error: anyerror = undefined;
     ok_blk: {
         // Resolve new path's parent directory.
-        const parent_dir_inode_ptr = path.toParentInode(new, name) catch |e| {
+        const parent_inode = path.toParentInode(
+            new,
+            name,
+        ) catch |e| {
             _error = e;
             break :ok_blk;
         };
 
-        parent_dir_inode_ptr.lock();
-        if (parent_dir_inode_ptr.dev != inode.dev) {
+        parent_inode.lock();
+        if (parent_inode.dev != inode.dev) {
             // Hard link can only be created on the same device.
-            parent_dir_inode_ptr.unlockPut();
+            parent_inode.unlockPut();
 
             _error = Error.SameDeviceRequired;
             break :ok_blk;
         }
         // Also create a new directory entry in the parent directory with
         // the same name that points to the inum of original file.
-        inode.dirLink(name, inode.inum) catch |e| {
-            parent_dir_inode_ptr.unlockPut();
+        parent_inode.dirLink(
+            mem.sliceTo(name, 0),
+            inode.inum,
+        ) catch |e| {
+            parent_inode.unlockPut();
 
             _error = e;
             break :ok_blk;
         };
-        parent_dir_inode_ptr.unlockPut();
+        parent_inode.unlockPut();
         inode.put();
 
         return 0;
