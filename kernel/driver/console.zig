@@ -1,7 +1,7 @@
+const File = @import("../fs/File.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
 const Process = @import("../process/Process.zig");
 const uart = @import("uart.zig");
-const File = @import("../fs/File.zig");
 
 const backspace = 0x08;
 const delete = 0x7f;
@@ -65,20 +65,12 @@ pub fn read(is_user_dst: bool, dst_addr: u64, len: u32) ?u32 {
     lock.acquire();
     defer lock.release();
 
-    while (local_len > 0) : ({
-        local_dst_addr += 1;
-        local_len -= 1;
-
-        // a whole line has arrived, return to
-        // the user-level read().
-        if (char == '\n') break;
-    }) {
+    while (local_len > 0) {
         // wait until interrupt handler has put some
         // input into buffer.
         while (read_index == write_index) {
             const curr_proc = Process.currentOrNull();
-            if (curr_proc != null and curr_proc.?.isKilled())
-                return null;
+            if (curr_proc != null and curr_proc.?.isKilled()) return null;
 
             Process.sleep(@intFromPtr(&read_index), &lock);
         }
@@ -103,6 +95,13 @@ pub fn read(is_user_dst: bool, dst_addr: u64, len: u32) ?u32 {
             @ptrCast(&char_buffer),
             1,
         ) catch break;
+
+        local_dst_addr += 1;
+        local_len -= 1;
+
+        // a whole line has arrived, return to
+        // the user-level read().
+        if (char == '\n') break;
     }
 
     return len - local_len;
@@ -119,9 +118,8 @@ pub fn intr(char: u8) void {
                 putChar(backspace);
             }
         },
-        else => elseBlk: {
-            if (char == 0 or (edit_index - read_index) > buffer_size)
-                break :elseBlk;
+        else => {
+            if (!(char != 0 and edit_index - read_index < buffer_size)) return;
 
             const local_char: u8 = if (char == '\r') '\n' else char;
 
@@ -132,15 +130,15 @@ pub fn intr(char: u8) void {
             buffer[edit_index % buffer_size] = local_char;
             edit_index += 1;
 
-            if (local_char != '\n' and local_char != ctrl(
-                'D',
-            ) and (edit_index - read_index) != buffer_size)
-                break :elseBlk;
-
-            // wake up consoleread() if a whole line (or end-of-file)
-            // has arrived.
-            write_index = read_index;
-            Process.wakeUp(@intFromPtr(&read_index));
+            if (local_char == '\n' or
+                local_char == ctrl('D') or
+                edit_index - read_index == buffer_size)
+            {
+                // wake up consoleread() if a whole line (or end-of-file)
+                // has arrived.
+                write_index = edit_index;
+                Process.wakeUp(@intFromPtr(&read_index));
+            }
         },
     }
 }
