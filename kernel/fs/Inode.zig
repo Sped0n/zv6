@@ -371,7 +371,7 @@ pub fn truncate(self: *Self) void {
             for (0..fs.n_indirect) |i| {
                 if (buf_data[i] != 0) fs.block.free(
                     self.dev,
-                    self.dinode.addrs[fs.n_direct],
+                    buf_data[i],
                 );
             }
         }
