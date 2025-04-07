@@ -502,7 +502,7 @@ pub fn write(
         log.write(buf);
     }
 
-    if (offset > self.dinode.size) self.dinode.size = offset;
+    if (local_offset > self.dinode.size) self.dinode.size = local_offset;
 
     // write the i-node back to disk even if the size didn't change
     // because the loop above might have called bmap() and added a new
