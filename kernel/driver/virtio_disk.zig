@@ -221,7 +221,7 @@ fn allocThreeDescs(indexes: *[3]u16) bool {
         if (allocDesc()) |index| {
             indexes[i] = index;
         } else {
-            for (0..i) |j| freeDesc(j);
+            for (0..i) |j| freeDesc(indexes[j]);
             return false;
         }
     }
