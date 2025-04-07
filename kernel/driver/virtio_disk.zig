@@ -183,7 +183,7 @@ fn allocDesc() ?u16 {
 
 ///mark a descriptor as free.
 fn freeDesc(i: usize) void {
-    assert(i <= virtio.num, @src());
+    assert(i < virtio.num, @src());
     assert(disk.free[i] == false, @src());
 
     disk.desc[i].addr = 0;
@@ -229,7 +229,7 @@ fn allocThreeDescs(indexes: *[3]u16) bool {
 }
 
 pub fn diskReadWrite(buf: *Buf, is_write: bool) void {
-    const sector = buf.blockno * (fs.block_size / 512);
+    const sector: u64 = buf.blockno * (fs.block_size / 512);
 
     disk.lock.acquire();
     defer disk.lock.release();
@@ -277,11 +277,11 @@ pub fn diskReadWrite(buf: *Buf, is_write: bool) void {
     disk.info[indexes[0]].buf = buf;
 
     // tell the device the first index in our chain of descriptors.
-    disk.avail.ring[disk.avail.index % virtio.num] = @intCast(indexes[0]);
+    disk.avail.ring[disk.avail.index % virtio.num] = indexes[0];
 
     fence();
     // tell the device another avail ring entry is available.
-    disk.avail.index += 1;
+    disk.avail.index +%= 1;
     fence();
 
     virtio.MMIO.write(.queue_notify, 0); // value is queue number
@@ -318,7 +318,7 @@ pub fn intr() void {
     // the device increments disk.used.index when it
     // adds an entry to the used ring.
 
-    while (disk.used_index != disk.used.index) : (disk.used_index += 1) {
+    while (disk.used_index != disk.used.index) : (disk.used_index +%= 1) {
         fence();
         const id = disk.used.ring[disk.used_index % virtio.num].id;
 

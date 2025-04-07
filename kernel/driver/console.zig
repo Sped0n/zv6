@@ -13,7 +13,7 @@ var read_index: u32 = 0;
 var write_index: u32 = 0;
 var edit_index: u32 = 0;
 
-inline fn ctrl(x: u8) u8 {
+inline fn ctrl(comptime x: u8) u8 {
     return x - '@';
 }
 
