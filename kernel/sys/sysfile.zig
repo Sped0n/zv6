@@ -13,6 +13,7 @@ const vm = @import("../memory/vm.zig");
 const param = @import("../param.zig");
 const panic = @import("../printf.zig").panic;
 const assert = @import("../printf.zig").assert;
+const printf = @import("../printf.zig").printf;
 const elf = @import("../process/elf.zig");
 const Process = @import("../process/Process.zig");
 const riscv = @import("../riscv.zig");
@@ -132,21 +133,18 @@ pub fn fileStat() !u64 {
 
 ///Create the path new as a link to the same inode as old.
 pub fn link() !u64 {
-    const name = try kmem.ksfba_allocator.alloc(u8, fs.dir_size);
-    defer kmem.ksfba_allocator.free(name);
-    const new = try kmem.ksfba_allocator.alloc(u8, param.max_path);
-    defer kmem.ksfba_allocator.free(new);
-    const old = try kmem.ksfba_allocator.alloc(u8, param.max_path);
-    defer kmem.ksfba_allocator.free(old);
+    var name: [fs.dir_size]u8 = undefined;
+    var new: [param.max_path]u8 = undefined;
+    var old: [param.max_path]u8 = undefined;
 
-    try argStr(0, old);
-    try argStr(1, new);
+    try argStr(0, &old);
+    try argStr(1, &new);
 
     log.beginOp();
     defer log.endOp();
 
     // Resolve old path to inode.
-    const inode = try path.toInode(old);
+    const inode = try path.toInode(mem.sliceTo(&old, 0));
 
     inode.lock();
     if (inode.dinode.type == .directory) {
@@ -162,8 +160,8 @@ pub fn link() !u64 {
     ok_blk: {
         // Resolve new path's parent directory.
         const parent_inode = path.toParentInode(
-            new,
-            name,
+            mem.sliceTo(&new, 0),
+            &name,
         ) catch |e| {
             _error = e;
             break :ok_blk;
@@ -180,7 +178,7 @@ pub fn link() !u64 {
         // Also create a new directory entry in the parent directory with
         // the same name that points to the inum of original file.
         parent_inode.dirLink(
-            mem.sliceTo(name, 0),
+            mem.sliceTo(&name, 0),
             inode.inum,
         ) catch |e| {
             parent_inode.unlockPut();
@@ -226,13 +224,11 @@ fn isDirEmpty(dir_inode: *Inode) bool {
 }
 
 pub fn unlink() !u64 {
-    const _path = try kmem.ksfba_allocator.alloc(u8, param.max_path);
-    defer kmem.ksfba_allocator.free(_path);
-    try argStr(0, _path);
-    const path_slice = mem.sliceTo(_path, 0);
+    var _path: [param.max_path]u8 = undefined;
+    try argStr(0, &_path);
+    const path_slice = mem.sliceTo(&_path, 0);
 
-    const name = try kmem.ksfba_allocator.alloc(u8, fs.dir_size);
-    defer kmem.ksfba_allocator.free(name);
+    var name: [fs.dir_size]u8 = undefined;
 
     log.beginOp();
     defer log.endOp();
@@ -240,13 +236,13 @@ pub fn unlink() !u64 {
     // Get parent directory and its name.
     const parent_inode = try path.toParentInode(
         path_slice,
-        name,
+        &name,
     );
     parent_inode.lock();
 
     var _error: anyerror = undefined;
     ok_blk: {
-        const name_slice: []const u8 = mem.sliceTo(name, 0);
+        const name_slice: []const u8 = mem.sliceTo(&name, 0);
         if (mem.eql(u8, name_slice, ".") or
             mem.eql(u8, name_slice, ".."))
         {
@@ -316,14 +312,13 @@ pub fn unlink() !u64 {
 ///
 ///Return a locked inode.
 fn create(_path: []const u8, _type: InodeType, major: u16, minor: u16) !*Inode {
-    const name = try kmem.ksfba_allocator.alloc(u8, fs.dir_size);
-    defer kmem.ksfba_allocator.free(name);
+    var name: [fs.dir_size]u8 = undefined;
 
     const parent_inode = try path.toParentInode(
         _path,
-        name,
+        &name,
     );
-    const name_slice = mem.sliceTo(name, 0);
+    const name_slice = mem.sliceTo(&name, 0);
 
     parent_inode.lock();
 
@@ -399,10 +394,9 @@ fn create(_path: []const u8, _type: InodeType, major: u16, minor: u16) !*Inode {
 pub fn open() !u64 {
     const omode: u64 = argRaw(u64, 1);
 
-    const _path = try kmem.ksfba_allocator.alloc(u8, param.max_path);
-    defer kmem.ksfba_allocator.free(_path);
-    try argStr(0, _path);
-    const path_slice = mem.sliceTo(_path, 0);
+    var _path: [param.max_path]u8 = undefined;
+    try argStr(0, &_path);
+    const path_slice = mem.sliceTo(&_path, 0);
 
     log.beginOp();
     defer log.endOp();
@@ -464,10 +458,9 @@ pub fn open() !u64 {
 }
 
 pub fn mkdir() !u64 {
-    const _path = try kmem.ksfba_allocator.alloc(u8, param.max_path);
-    defer kmem.ksfba_allocator.free(_path);
-    try argStr(0, _path);
-    const path_slice = mem.sliceTo(_path, 0);
+    var _path: [param.max_path]u8 = undefined;
+    try argStr(0, &_path);
+    const path_slice = mem.sliceTo(&_path, 0);
 
     log.beginOp();
     defer log.endOp();
@@ -478,10 +471,9 @@ pub fn mkdir() !u64 {
 }
 
 pub fn mknod() !u64 {
-    const _path = try kmem.ksfba_allocator.alloc(u8, param.max_path);
-    defer kmem.ksfba_allocator.free(_path);
-    try argStr(0, _path);
-    const path_slice = mem.sliceTo(_path, 0);
+    var _path: [param.max_path]u8 = undefined;
+    try argStr(0, &_path);
+    const path_slice = mem.sliceTo(&_path, 0);
 
     log.beginOp();
     defer log.endOp();
@@ -499,10 +491,9 @@ pub fn mknod() !u64 {
 }
 
 pub fn chdir() !u64 {
-    const _path = try kmem.ksfba_allocator.alloc(u8, param.max_path);
-    defer kmem.ksfba_allocator.free(_path);
-    try argStr(0, _path);
-    const path_slice = mem.sliceTo(_path, 0);
+    var _path: [param.max_path]u8 = undefined;
+    try argStr(0, &_path);
+    const path_slice = mem.sliceTo(&_path, 0);
 
     const proc = try Process.current();
     assert(proc.cwd != null, @src());
@@ -529,15 +520,15 @@ pub fn chdir() !u64 {
 }
 
 pub fn exec() !u64 {
-    const _path = try kmem.ksfba_allocator.alloc(u8, param.max_path);
-    defer kmem.ksfba_allocator.free(_path);
-    try argStr(0, _path);
-    const path_slice = mem.sliceTo(_path, 0);
+    var _path: [param.max_path]u8 = undefined;
+    try argStr(0, &_path);
+    const path_slice = mem.sliceTo(&_path, 0);
 
     const uargv: u64 = argRaw(u64, 1);
 
-    var argv = try kmem.ksfba_allocator.alloc(*[4096]u8, param.max_arg);
-    defer kmem.ksfba_allocator.free(argv);
+    const tmp_page = try kmem.alloc();
+    var argv: *[param.max_arg]*[4096]u8 = @ptrCast(@alignCast(tmp_page));
+    defer kmem.free(tmp_page);
 
     var i: usize = 0;
     defer for (0..i) |j| {

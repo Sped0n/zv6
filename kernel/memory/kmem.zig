@@ -1,5 +1,3 @@
-const std = @import("std");
-
 const SpinLock = @import("../lock/SpinLock.zig");
 const memlayout = @import("../memlayout.zig");
 const panic = @import("../printf.zig").panic;
@@ -17,9 +15,6 @@ var freelist: ?*Block = null;
 
 pub const Error = error{OutOfMemory};
 
-var ksfba: std.heap.FixedBufferAllocator = undefined;
-pub var ksfba_allocator: std.mem.Allocator = undefined;
-
 pub fn init() void {
     lock.init("kmem");
     freeRange(@intFromPtr(end), memlayout.phy_stop);
@@ -27,22 +22,11 @@ pub fn init() void {
 
 fn freeRange(start_addr: u64, end_addr: u64) void {
     var local_start_addr: u64 = riscv.pgRoundUp(start_addr);
-    while (local_start_addr + riscv.pg_size <= (end_addr - 16 * riscv.pg_size)) : ({
+    while (local_start_addr + riscv.pg_size <= end_addr) : ({
         local_start_addr += riscv.pg_size;
     }) {
         free(@ptrFromInt(local_start_addr));
     }
-
-    const ksfba_start_addr = local_start_addr;
-    var ksfba_buffer_size: usize = 0;
-    while (local_start_addr + riscv.pg_size <= end_addr) : ({
-        local_start_addr += riscv.pg_size;
-    }) {
-        ksfba_buffer_size += riscv.pg_size;
-    }
-    printf("ksfba size: {d}\n", .{ksfba_buffer_size});
-    ksfba = std.heap.FixedBufferAllocator.init(@as([*]u8, @ptrFromInt(ksfba_start_addr))[0..ksfba_buffer_size]);
-    ksfba_allocator = ksfba.threadSafeAllocator();
 }
 
 ///Free the page of physical memory pointed at by pa,
