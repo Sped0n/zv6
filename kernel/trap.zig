@@ -186,14 +186,14 @@ fn clockIntr() void {
         ticks_lock.acquire();
         defer ticks_lock.release();
 
-        ticks += 1;
+        ticks +%= 1;
         Process.wakeUp(@intFromPtr(&ticks));
     }
 
     // ask for the next timer interrupt. this also clears
     // the interrupt request. 1000000 is about a tenth
     // of a second.
-    riscv.stimecmp.write(riscv.time.read() + 1000000);
+    riscv.stimecmp.write(riscv.time.read() +% 1000000);
 }
 
 pub fn devIntr() WhichDev {

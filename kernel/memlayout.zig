@@ -42,10 +42,10 @@ pub inline fn plicSEnable(hart: u64) u64 {
     return plic + 0x2080 + hart * 0x100;
 }
 pub inline fn plicSPriority(hart: u64) u64 {
-    return plic + 0x201000 + hart * 0x2000;
+    return plic +% 0x201000 +% (hart *% 0x2000);
 }
 pub inline fn plicSClaim(hart: u64) u64 {
-    return plic + 0x201004 + hart * 0x2000;
+    return plic +% 0x201004 +% (hart *% 0x2000);
 }
 
 // the kernel expects there to be RAM
