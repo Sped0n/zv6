@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = std.builtin;
 const mem = std.mem;
+const math = std.math;
 
 const File = @import("../fs/File.zig");
 const fs = @import("../fs/fs.zig");
@@ -161,6 +162,7 @@ pub fn allocPid() u32 {
     defer pid_lock.release();
 
     const pid = nextpid;
+    assert(pid != math.maxInt(u32), @src());
     nextpid += 1;
     return pid;
 }
@@ -709,6 +711,6 @@ pub fn dump() void {
         const proc = procs[i];
 
         if (proc.state == .unused) continue;
-        printf("{d} {s: ^10} {s}\n", .{ proc.pid, @tagName(proc.state), proc.name });
+        printf("{d: <7} {s: ^10} {s}\n", .{ proc.pid, @tagName(proc.state), proc.name });
     }
 }
