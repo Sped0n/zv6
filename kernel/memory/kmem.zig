@@ -27,7 +27,7 @@ pub fn init() void {
 
 fn freeRange(start_addr: u64, end_addr: u64) void {
     var local_start_addr: u64 = riscv.pgRoundUp(start_addr);
-    while (local_start_addr + riscv.pg_size <= (end_addr - 4 * riscv.pg_size)) : ({
+    while (local_start_addr + riscv.pg_size <= (end_addr - 16 * riscv.pg_size)) : ({
         local_start_addr += riscv.pg_size;
     }) {
         free(@ptrFromInt(local_start_addr));
