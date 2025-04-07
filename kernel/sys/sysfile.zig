@@ -402,25 +402,18 @@ pub fn open() !u64 {
     defer log.endOp();
 
     var inode: *Inode = undefined;
-    const flag = OpenMode.parse(omode);
-    switch (flag) {
-        .create => {
-            inode = try create(path_slice, .file, 0, 0);
-        },
-        .invalid => {
-            return Error.InvalidOpenMode;
-        },
-        else => {
-            inode = try path.toInode(path_slice);
-            inode.lock();
-            if (inode.dinode.type == .directory and
-                flag != .read_only)
-            {
-                // Users are not allowed to open a read-only directory for writing.
-                inode.unlockPut();
-                return Error.PermissionDenied;
-            }
-        },
+    if (omode & @intFromEnum(OpenMode.create) != 0) {
+        inode = try create(path_slice, .file, 0, 0);
+    } else {
+        inode = try path.toInode(path_slice);
+        inode.lock();
+        if (inode.dinode.type == .directory and
+            omode != @intFromEnum(OpenMode.read_only))
+        {
+            // Users are not allowed to open a read-only directory for writing.
+            inode.unlockPut();
+            return Error.PermissionDenied;
+        }
     }
 
     if (inode.dinode.type == .device and
@@ -451,11 +444,12 @@ pub fn open() !u64 {
         file.offset = 0;
     }
     file.inode = inode;
-    file.readable = flag != .write_only;
-    file.writable = flag == .write_only or flag == .read_write;
+    file.readable = !(omode & @intFromEnum(OpenMode.write_only) != 0);
+    file.writable = (omode & @intFromEnum(OpenMode.write_only) != 0) or
+        (omode & @intFromEnum(OpenMode.read_write) != 0);
 
     // Handle truncation.
-    if (flag == .truncate and
+    if (omode & @intFromEnum(OpenMode.truncate) != 0 and
         inode.dinode.type == .file) inode.truncate();
 
     inode.unlock();
