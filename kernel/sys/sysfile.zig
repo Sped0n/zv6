@@ -414,7 +414,7 @@ pub fn open() !u64 {
             inode = try path.toInode(path_slice);
             inode.lock();
             if (inode.dinode.type == .directory and
-                flag == .read_only)
+                flag != .read_only)
             {
                 // Users are not allowed to open a read-only directory for writing.
                 inode.unlockPut();
