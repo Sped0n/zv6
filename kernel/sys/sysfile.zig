@@ -360,7 +360,7 @@ fn create(_path: []const u8, _type: InodeType, major: u16, minor: u16) !*Inode {
                 _error = e;
                 break :ok_blk;
             };
-            inode.dirLink(".", parent_inode.inum) catch |e| {
+            inode.dirLink("..", parent_inode.inum) catch |e| {
                 _error = e;
                 break :ok_blk;
             };
