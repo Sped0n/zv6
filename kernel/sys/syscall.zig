@@ -118,11 +118,6 @@ pub fn syscall() void {
         return;
     };
 
-    // printf(
-    //     "\n{d}({s}): syscall {s}\n",
-    //     .{ proc.pid, proc.name, std.enums.tagName(SysCallID, syscall_id) orelse "null" },
-    // );
-
     var _error: anyerror = undefined;
     ok_blk: {
         switch (syscall_id) {
@@ -251,9 +246,9 @@ pub fn syscall() void {
         return;
     }
 
-    printf(
-        "\nsyscall({s}) failed with {s}\n",
-        .{ std.enums.tagName(SysCallID, syscall_id) orelse "null", @errorName(_error) },
-    );
+    // printf(
+    //     "\nsyscall({s}) failed with {s}\n",
+    //     .{ std.enums.tagName(SysCallID, syscall_id) orelse "null", @errorName(_error) },
+    // );
     @as(*i64, @ptrCast(a0)).* = -1;
 }
