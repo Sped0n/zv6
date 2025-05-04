@@ -1,2 +1,3 @@
 [tools]
+python = "3.11"
 zig = "0.14.0"
