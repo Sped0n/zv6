@@ -7,10 +7,6 @@ const virtio_args = [_][]const u8{
     "file=fs.img,if=none,format=raw,id=x0",
     "-device",
     "virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0",
-    "-D",
-    "qemu_debug.log",
-    "-d",
-    "guest_errors,int,trace:virtio_*",
 };
 
 const qemu_run_args = [_][]const u8{
@@ -39,6 +35,13 @@ const qemu_gdb_args = qemu_run_args ++ [_][]const u8{
     "-gdb",
     "tcp::3333",
     "-S", // Freeze CPU at startup
+};
+
+const qemu_trace_args = qemu_gdb_args ++ [_][]const u8{
+    "-D",
+    "qemu_debug.log",
+    "-d",
+    "guest_errors,int,in_asm",
 };
 
 const cflags = [_][]const u8{
@@ -130,6 +133,10 @@ pub fn build(b: *std.Build) void {
     const debug_kernel_step = b.step(
         "qemu-gdb",
         "Start the kernel in qemu with gdb",
+    );
+    const trace_kernel_step = b.step(
+        "qemu-trace",
+        "Start the kernel in qemu with gdb and trace log enabled",
     );
 
     const check = b.step(
@@ -295,7 +302,7 @@ pub fn build(b: *std.Build) void {
     );
     gen_initcode_step.dependOn(&b.addInstallBinFile(
         initcode_bin.getOutput(),
-        "../user/initcode",
+        "user/initcode",
     ).step);
 
     // kernel ------------------------------------------------------------------
@@ -304,13 +311,17 @@ pub fn build(b: *std.Build) void {
         .target = rv64,
         .optimize = optimize,
         .code_model = .medium,
+        .omit_frame_pointer = false,
+        .red_zone = false,
+        .stack_check = false,
+        .stack_protector = false,
     });
     kernel_module.addAssemblyFile(b.path("kernel/asm/entry.S"));
     kernel_module.addAssemblyFile(b.path("kernel/asm/trampoline.S"));
     kernel_module.addAssemblyFile(b.path("kernel/asm/kernelvec.S"));
     kernel_module.addAssemblyFile(b.path("kernel/asm/swtch.S"));
     kernel_module.addAnonymousImport("initcode", .{
-        .root_source_file = b.path("zig-out/user/initcode"),
+        .root_source_file = initcode_bin.getOutput(),
     });
 
     {
@@ -318,7 +329,6 @@ pub fn build(b: *std.Build) void {
             .name = "kernel",
             .root_module = kernel_module,
             .linkage = .static,
-            .omit_frame_pointer = false,
         });
         // for std.fmt.format would crash if want_lto is false
         kernel.want_lto = true;
@@ -349,6 +359,11 @@ pub fn build(b: *std.Build) void {
         debug_cmd.step.dependOn(create_image_step);
         debug_cmd.step.dependOn(build_kernel_step);
         debug_kernel_step.dependOn(&debug_cmd.step);
+
+        const trace_cmd = b.addSystemCommand(&qemu_trace_args);
+        trace_cmd.step.dependOn(create_image_step);
+        trace_cmd.step.dependOn(build_kernel_step);
+        trace_kernel_step.dependOn(&trace_cmd.step);
     }
 
     // zls build-on-save
