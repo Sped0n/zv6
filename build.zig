@@ -149,6 +149,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = null,
         .target = native,
         .optimize = .ReleaseFast,
+        .link_libc = true,
     });
     mkfs_module.addIncludePath(b.path("."));
     mkfs_module.addCSourceFile(.{
