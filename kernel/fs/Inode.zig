@@ -409,7 +409,7 @@ pub fn read(
 
     if (local_offset > self.dinode.size or
         local_offset + local_len < local_offset)
-        return Error.OffsetTooLarge;
+        return 0;
     if (local_offset + local_len > self.dinode.size)
         local_len = self.dinode.size - offset;
 
