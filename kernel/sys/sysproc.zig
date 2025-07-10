@@ -4,6 +4,7 @@ const argRaw = @import("syscall.zig").argRaw;
 
 pub const Error = error{
     ProcIsKilled,
+    ShrinkGreaterThanHeapSize,
 };
 
 pub fn exit() u64 {
@@ -28,6 +29,12 @@ pub fn wait() !u64 {
 pub fn sbrk() !u64 {
     const n: i32 = argRaw(i32, 0);
     const addr = (try Process.current()).size;
+    if (n < 0) {
+        const shrink_amount: u64 = @abs(n);
+        if (shrink_amount > addr) {
+            return error.ShrinkGreaterThanHeapSize;
+        }
+    }
     try Process.growCurrent(n);
     return addr;
 }
