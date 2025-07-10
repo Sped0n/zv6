@@ -108,7 +108,7 @@ inline fn flagsToPerm(flags: u32) u64 {
     return perm;
 }
 
-pub fn exec(_path: []const u8, argv: []*[4096]u8) !u64 {
+pub fn exec(_path: []const u8, argv: []?*[4096]u8) !u64 {
     var size: u64 = 0;
     var inode: ?*Inode = null;
     var page_table: ?riscv.PageTable = null;
@@ -250,7 +250,7 @@ pub fn exec(_path: []const u8, argv: []*[4096]u8) !u64 {
         for (argv, 0..) |arg, j| {
             const arg_len_with_null_terminated = (mem.indexOfScalar(
                 u8,
-                arg,
+                arg.?,
                 0,
             ) orelse 0) + 1;
             stack_pointer -= arg_len_with_null_terminated;
@@ -262,7 +262,7 @@ pub fn exec(_path: []const u8, argv: []*[4096]u8) !u64 {
             vm.copyOut(
                 page_table.?,
                 stack_pointer,
-                arg,
+                arg.?,
                 arg_len_with_null_terminated,
             ) catch |e| {
                 _error = e;

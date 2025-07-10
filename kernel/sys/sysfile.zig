@@ -527,13 +527,17 @@ pub fn exec() !u64 {
     const uargv: u64 = argRaw(u64, 1);
 
     const tmp_page = try kmem.alloc();
-    var argv: *[param.max_arg]*[4096]u8 = @ptrCast(@alignCast(tmp_page));
     defer kmem.free(tmp_page);
 
-    var i: usize = 0;
-    defer for (0..i) |j| {
-        kmem.free(argv[j]);
+    var argv: *[param.max_arg]?*[4096]u8 = @ptrCast(@alignCast(tmp_page));
+    argv.* = [_]?*[4096]u8{null} ** param.max_arg;
+    defer for (0..param.max_arg) |j| {
+        if (argv[j]) |page| {
+            kmem.free(page);
+        }
     };
+
+    var i: usize = 0;
     while (true) : (i += 1) {
         if (i >= argv.len) {
             return Error.ArgcOverflow;
@@ -543,7 +547,7 @@ pub fn exec() !u64 {
         if (uarg == 0) break;
 
         argv[i] = try kmem.alloc();
-        try fetchStr(uarg, argv[i]);
+        try fetchStr(uarg, argv[i].?);
     }
 
     return try elf.exec(path_slice, argv[0..i]);
