@@ -5,15 +5,12 @@
     nixpkgs,
     ...
   }: let
-    system = "aarch64-darwin";
-  in {
-    devShells."${system}".default = let
-      pkgs = import nixpkgs {
-        inherit system;
-      };
+    supportedSystems = ["aarch64-darwin" "aarch64-linux" "x86_64-linux"];
+    perSystem = system: let
+      pkgs = import nixpkgs {inherit system;};
       venvDir = "./.venv";
-    in
-      pkgs.mkShellNoCC {
+    in {
+      devShells.default = pkgs.mkShellNoCC {
         name = "zv6";
         packages = with pkgs; [
           zig
@@ -43,5 +40,11 @@
           source "${venvDir}/bin/activate"
         '';
       };
+    };
+  in {
+    devShells = nixpkgs.lib.genAttrs supportedSystems (
+      system:
+        (perSystem system).devShells
+    );
   };
 }
