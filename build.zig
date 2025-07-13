@@ -22,7 +22,7 @@ const qemu_run_args = [_][]const u8{
     "-cpu",
     "rv64",
     "-smp",
-    "2",
+    "3",
     "-nographic",
     "-serial",
     "mon:stdio",
