@@ -20,6 +20,7 @@
             with p; [
               virtualenv
             ]))
+          perl
         ];
         shellHook = with pkgs; ''
           SOURCE_DATE_EPOCH=$(date +%s)

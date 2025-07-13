@@ -111,7 +111,6 @@ pub fn build(b: *std.Build) void {
         "Build mkfs binary",
     );
 
-    const gen_usys_step = b.step("gen-usys", "Generate usys.S");
     const build_user_step = b.step(
         "user",
         "Build user programs",
@@ -183,20 +182,6 @@ pub fn build(b: *std.Build) void {
         build_mkfs_step.dependOn(&build_cmd.step);
     }
 
-    // usys --------------------------------------------------------------------
-    const gen_usys_cmd = b.addSystemCommand(&[_][]const u8{
-        "perl",
-        "user/usys.pl",
-    });
-    gen_usys_cmd.setCwd(b.path("."));
-    gen_usys_step.dependOn(
-        &b.addInstallFile(
-            gen_usys_cmd.captureStdOut(),
-            "../user/usys.S",
-        ).step,
-    );
-    build_user_step.dependOn(gen_usys_step);
-
     // user programs -----------------------------------------------------------
     const ulib_module = b.createModule(.{
         .root_source_file = null,
@@ -217,7 +202,16 @@ pub fn build(b: *std.Build) void {
         .file = b.path("user/umalloc.c"),
         .flags = &cflags,
     });
-    ulib_module.addAssemblyFile(b.path("user/usys.S"));
+
+    const gen_usys_s_cmd = b.addSystemCommand(&[_][]const u8{
+        "perl",
+        "user/usys.pl",
+    });
+    gen_usys_s_cmd.setCwd(b.path("."));
+    ulib_module.addCSourceFile(.{
+        .file = gen_usys_s_cmd.captureStdOut(),
+        .language = .assembly_with_preprocessor,
+    });
 
     {
         const ulib = b.addStaticLibrary(.{
