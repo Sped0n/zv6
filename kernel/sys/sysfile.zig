@@ -526,15 +526,11 @@ pub fn exec() !u64 {
 
     const uargv: u64 = argRaw(u64, 1);
 
-    const tmp_page = try kmem.alloc();
-    defer kmem.free(tmp_page);
-
-    var argv: *[param.max_arg]?*[4096]u8 = @ptrCast(@alignCast(tmp_page));
-    argv.* = [_]?*[4096]u8{null} ** param.max_arg;
+    var argv = [_]?*[4096]u8{null} ** param.max_arg;
     defer for (0..param.max_arg) |j| {
         if (argv[j]) |page| {
             kmem.free(page);
-        }
+        } else break;
     };
 
     var i: usize = 0;
