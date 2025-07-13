@@ -126,10 +126,13 @@ int main(int argc, char *argv[]) {
   iappend(rootino, &de, sizeof(de));
 
   for (i = 2; i < argc; i++) {
-    // get rid of "user/"
     char *shortname;
+    // get rid of "zig-out/user/"
     if (strncmp(argv[i], "zig-out/user/", 13) == 0)
       shortname = argv[i] + 13;
+    // get rid of "misc/"
+    else if (strncmp(argv[i], "misc/", 5) == 0)
+      shortname = argv[i] + 5;
     else
       shortname = argv[i];
 

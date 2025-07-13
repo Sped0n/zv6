@@ -277,7 +277,7 @@ pub fn build(b: *std.Build) void {
         const create_image_cmd = b.addSystemCommand(&[_][]const u8{
             "zig-out/mkfs/mkfs",
             "fs.img",
-            "README",
+            "misc/README",
         });
         create_image_cmd.setCwd(b.path("."));
         create_image_cmd.addArgs(prog_paths.items);
