@@ -101,19 +101,35 @@ pub const Error = error{
     NoProcAvailable,
 };
 
-///Allocate a page for each process's kernel stack.
+///Allocate two pages for each process's kernel stack.
 ///Map it high in memory, followed by an invalid
 ///guard page.
 pub fn mapStacks(kpgtbl: riscv.PageTable) !void {
     // NOTE: don't try to iterate on uninitialized procs
     // see https://github.com/ziglang/zig/issues/13934
     for (0..param.n_proc) |i| {
-        const page = try kmem.alloc();
+        const page0 = try kmem.alloc();
+        const page1 = try kmem.alloc();
+        errdefer {
+            kmem.free(page0);
+            kmem.free(page1);
+        }
         const virt_addr = memlayout.kernelStack(i);
         vm.kvmMap(
             kpgtbl,
             virt_addr,
-            @intFromPtr(page),
+            @intFromPtr(page0),
+            riscv.pg_size,
+            @intFromEnum(
+                riscv.PteFlag.r,
+            ) | @intFromEnum(
+                riscv.PteFlag.w,
+            ),
+        );
+        vm.kvmMap(
+            kpgtbl,
+            virt_addr + riscv.pg_size,
+            @intFromPtr(page1),
             riscv.pg_size,
             @intFromEnum(
                 riscv.PteFlag.r,
@@ -207,7 +223,7 @@ fn create() !*Self {
         @ptrCast(&proc.context),
     )[0..@sizeOf(@TypeOf(proc.context))], 0);
     proc.context.ra = @intFromPtr(&forkRet);
-    proc.context.sp = proc.kstack + riscv.pg_size;
+    proc.context.sp = proc.kstack + 2 * riscv.pg_size;
 
     return proc;
 }

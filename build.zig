@@ -343,8 +343,6 @@ pub fn build(b: *std.Build) void {
             .root_module = kernel_module,
             .linkage = .static,
         });
-        // for std.fmt.format would crash if want_lto is false
-        kernel.want_lto = true;
         kernel.setLinkerScript(b.path("kernel/kernel.ld"));
         kernel.link_z_max_page_size = 4096;
         kernel.link_function_sections = true;
@@ -392,8 +390,6 @@ pub fn build(b: *std.Build) void {
             .root_module = kernel_module,
             .linkage = .static,
         });
-        // for std.fmt.format would crash if want_lto is false
-        exe_check.want_lto = true;
         exe_check.setLinkerScript(b.path("kernel/kernel.ld"));
         exe_check.link_z_max_page_size = 4096;
         exe_check.link_function_sections = true;
