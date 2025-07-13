@@ -65,7 +65,6 @@ pub const block = struct {
     ///Also mark the relevant bit in bitmap to 1.
     pub fn alloc(dev: u32) ?u32 {
         var buf: *Buf = undefined;
-
         var blockno: u32 = 0;
         while (blockno < super_block.size) : ({
             blockno += bitmap_bits_per_block;
@@ -93,8 +92,6 @@ pub const block = struct {
 
             buf.release();
         }
-
-        printf("disk_block.alloc: out of blocks\n", .{});
         return null;
     }
 

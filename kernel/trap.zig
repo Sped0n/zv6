@@ -74,8 +74,9 @@ pub fn userTrap() callconv(.c) void {
         which_dev = devIntr();
 
         if (which_dev == .not_recognize) {
+            printf("\n", .{});
             printf("usertrap(): unexpected scause {x}, pid={d}\n", .{ riscv.scause.read(), proc.pid });
-            printf("            sepc={x} stval={x}", .{ riscv.sepc.read(), riscv.stval.read() });
+            printf("            sepc={x} stval={x}\n", .{ riscv.sepc.read(), riscv.stval.read() });
             proc.setKilled();
         }
     }

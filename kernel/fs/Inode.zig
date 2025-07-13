@@ -193,7 +193,6 @@ pub fn alloc(dev: u32, _type: InodeType) ?*Self {
             return get(dev, @intCast(inum));
         }
     }
-    printf("Inode.alloc: no inodes\n", .{});
     return null;
 }
 
