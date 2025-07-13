@@ -2,7 +2,7 @@
 
 A **_complete_** reimplementation of [xv6 (RISC-V)](https://github.com/mit-pdos/xv6-riscv) in Zig.
 
-https://github.com/user-attachments/assets/4fda1ac3-60ef-4ba5-9fd1-289760c8a76f
+![demo](https://raw.githubusercontent.com/Sped0n/zv6/main/misc/demo.gif)
 
 > The above video is at 10× speed.
 
@@ -51,7 +51,7 @@ zig build kernel     # compile the kernel
 If you just want to recompile the kernel & skip recreating your disk image:
 
 ```
-zig build --keep‐fsimg kernel
+zig build kernel -Dkeep-fsimg
 ```
 
 ### Run
@@ -93,7 +93,8 @@ You can then inspect `qemu_debug.log` for guest errors, instruction dumps, etc.
 ## Credits
 
 - https://github.com/mit-pdos/xv6-riscv
-- https://github.com/saza-ku/xv6-zig
 - https://github.com/skyzh/core-os-riscv
+- https://xiayingp.gitbook.io/build_a_os
 - https://github.com/tzx/nOSering
+- https://github.com/saza-ku/xv6-zig
 - https://github.com/candrewlee14/xv6-riscv-zig
