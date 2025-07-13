@@ -95,6 +95,8 @@ const user_progs = [_][]const u8{
 };
 
 pub fn build(b: *std.Build) void {
+    const keep_fsimg = b.option(bool, "keep-fsimg", "Keep the existing fs.img instead of recreating it") orelse false;
+
     const optimize = b.standardOptimizeOption(.{});
     const native = b.standardTargetOptions(.{});
     const rv64 = b.resolveTargetQuery(.{
@@ -115,6 +117,10 @@ pub fn build(b: *std.Build) void {
         "Build user programs",
     );
 
+    const rm_image_step = b.step(
+        "rm-image",
+        "Remove existing fs.img",
+    );
     const create_image_step = b.step(
         "image",
         "Create fs image",
@@ -265,6 +271,11 @@ pub fn build(b: *std.Build) void {
 
     // fs.img ------------------------------------------------------------------
     {
+        const rm_image_cmd = b.addSystemCommand(&.{ "rm", "-f", "fs.img" });
+        rm_image_cmd.setCwd(b.path("."));
+        rm_image_step.dependOn(&rm_image_cmd.step);
+    }
+    {
         var prog_paths = std.ArrayList([]const u8).init(b.allocator);
         for (user_progs) |prog_name| prog_paths.append(
             std.mem.concat(
@@ -281,6 +292,7 @@ pub fn build(b: *std.Build) void {
         });
         create_image_cmd.setCwd(b.path("."));
         create_image_cmd.addArgs(prog_paths.items);
+        create_image_cmd.step.dependOn(rm_image_step);
         create_image_cmd.step.dependOn(build_mkfs_step);
         create_image_cmd.step.dependOn(build_user_step);
         create_image_step.dependOn(&create_image_cmd.step);
@@ -352,17 +364,23 @@ pub fn build(b: *std.Build) void {
         build_kernel_step.dependOn(&build_cmd.step);
 
         const run_cmd = b.addSystemCommand(&qemu_run_args);
-        run_cmd.step.dependOn(create_image_step);
+        if (!keep_fsimg) {
+            run_cmd.step.dependOn(create_image_step);
+        }
         run_cmd.step.dependOn(build_kernel_step);
         run_kernel_step.dependOn(&run_cmd.step);
 
         const debug_cmd = b.addSystemCommand(&qemu_gdb_args);
-        debug_cmd.step.dependOn(create_image_step);
+        if (!keep_fsimg) {
+            debug_cmd.step.dependOn(create_image_step);
+        }
         debug_cmd.step.dependOn(build_kernel_step);
         debug_kernel_step.dependOn(&debug_cmd.step);
 
         const trace_cmd = b.addSystemCommand(&qemu_trace_args);
-        trace_cmd.step.dependOn(create_image_step);
+        if (!keep_fsimg) {
+            trace_cmd.step.dependOn(create_image_step);
+        }
         trace_cmd.step.dependOn(build_kernel_step);
         trace_kernel_step.dependOn(&trace_cmd.step);
     }
