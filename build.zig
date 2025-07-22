@@ -219,7 +219,7 @@ pub fn build(b: *std.Build) void {
             .root_module = ulib_module,
         });
 
-        for (user_progs) |prog_name| {
+        inline for (user_progs) |prog_name| {
             const prog_module = b.createModule(.{
                 .root_source_file = null,
                 .target = rv64,
@@ -229,20 +229,12 @@ pub fn build(b: *std.Build) void {
             prog_module.linkLibrary(ulib);
             prog_module.addIncludePath(b.path("."));
             prog_module.addCSourceFile(.{
-                .file = b.path(std.mem.concat(
-                    b.allocator,
-                    u8,
-                    &[_][]const u8{ "user/", prog_name, ".c" },
-                ) catch unreachable),
+                .file = b.path("user/" ++ prog_name ++ ".c"),
                 .flags = &cflags,
             });
 
             const prog = b.addExecutable(.{
-                .name = std.mem.concat(
-                    b.allocator,
-                    u8,
-                    &[_][]const u8{ "_", prog_name },
-                ) catch unreachable,
+                .name = "_" ++ prog_name,
                 .root_module = prog_module,
             });
             prog.setLinkerScript(b.path("user/user.ld"));
@@ -270,14 +262,10 @@ pub fn build(b: *std.Build) void {
         rm_image_step.dependOn(&rm_image_cmd.step);
     }
     {
-        var prog_paths = std.ArrayList([]const u8).init(b.allocator);
-        for (user_progs) |prog_name| prog_paths.append(
-            std.mem.concat(
-                b.allocator,
-                u8,
-                &[_][]const u8{ "zig-out/user/", "_", prog_name },
-            ) catch unreachable,
-        ) catch unreachable;
+        var prog_paths: [user_progs.len][]const u8 = undefined;
+        inline for (&prog_paths, user_progs) |*prog_path, prog_name| {
+            prog_path.* = "zig-out/user/" ++ "_" ++ prog_name;
+        }
 
         const create_image_cmd = b.addSystemCommand(&[_][]const u8{
             "zig-out/mkfs/mkfs",
@@ -285,7 +273,7 @@ pub fn build(b: *std.Build) void {
             "misc/README",
         });
         create_image_cmd.setCwd(b.path("."));
-        create_image_cmd.addArgs(prog_paths.items);
+        create_image_cmd.addArgs(&prog_paths);
         create_image_cmd.step.dependOn(rm_image_step);
         create_image_cmd.step.dependOn(build_mkfs_step);
         create_image_cmd.step.dependOn(build_user_step);
