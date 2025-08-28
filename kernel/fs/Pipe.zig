@@ -24,13 +24,11 @@ pub const Error = error{
 
 pub fn alloc(file_0: **File, file_1: **File) !void {
     file_0.* = try File.alloc();
+    errdefer file_0.*.close();
     file_1.* = try File.alloc();
+    errdefer file_1.*.close();
 
-    const pipe: *Self = @ptrCast(@alignCast(kmem.alloc() catch |e| {
-        file_0.*.close();
-        file_1.*.close();
-        return e;
-    }));
+    const pipe: *Self = @ptrCast(@alignCast(try kmem.alloc()));
 
     pipe.read_open = true;
     pipe.write_open = true;
