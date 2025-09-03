@@ -178,14 +178,12 @@ fn writeLog() void {
     var tail: u32 = 0;
     while (tail < log.header.n) : (tail += 1) {
         const to = Buf.readFrom(log.dev, log.start + tail + 1);
+        defer to.release();
         const from = Buf.readFrom(
             log.dev,
             log.header.block[tail],
         );
-        defer {
-            to.release();
-            from.release();
-        }
+        defer from.release();
 
         memMove(&to.data, &from.data, fs.block_size);
         to.writeBack(); // write the log
