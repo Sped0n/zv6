@@ -64,10 +64,10 @@ pub const Error = error{
     LoadSegReadFailed,
 };
 
-///Load a program segment into pagetable at virtual address va.
-///va must be page-aligned
-///and the pages from va to va+sz must already be mapped.
-///Returns 0 on success, -1 on failure.
+/// Load a program segment into pagetable at virtual address va.
+/// va must be page-aligned
+/// and the pages from va to va+sz must already be mapped.
+/// Returns 0 on success, -1 on failure.
 fn loadSeg(
     page_table: riscv.PageTable,
     virt_addr: u64,

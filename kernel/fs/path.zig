@@ -15,16 +15,16 @@ pub const Error = error{
     TraverseAll,
 };
 
-///Copy the next path element from path into name.
-///Return the current offset after skipping.
-///so the caller can check path.len==curr to see if the name is the last one.
-///If no name to remove, return null.
+/// Copy the next path element from path into name.
+/// Return the current offset after skipping.
+/// so the caller can check path.len==curr to see if the name is the last one.
+/// If no name to remove, return null.
 ///
-///Examples:
-///  skipElem("a/bb/c", name) = 2, setting name = "a"
-///  skipElem("///a//bb", name) = 6, setting name = "a"
-///  skipElem("a", name) = 1, setting name = "a"
-///  skipElem("", name) = skipElem("////", name) = null
+/// Examples:
+///   skipElem("a/bb/c", name) = 2, setting name = "a"
+///   skipElem("///a//bb", name) = 6, setting name = "a"
+///   skipElem("a", name) = 1, setting name = "a"
+///   skipElem("", name) = skipElem("////", name) = null
 ///
 fn skipElem(path: []const u8, curr: usize, name_buffer: []u8) usize {
     var local_curr: usize = curr;
@@ -60,10 +60,10 @@ fn skipElem(path: []const u8, curr: usize, name_buffer: []u8) usize {
     return local_curr;
 }
 
-///Look up and return the inode for a path name.
-///If is_parent == true, return the inode for the parent and copy the final
-///path element into name, which must have room for dir_sz bytes.
-///Must be called inside a transaction since it calls iput().
+/// Look up and return the inode for a path name.
+/// If is_parent == true, return the inode for the parent and copy the final
+/// path element into name, which must have room for dir_sz bytes.
+/// Must be called inside a transaction since it calls iput().
 fn lookup(_path: []const u8, comptime is_parent: bool, name_buffer: []u8) !*Inode {
     var inode_ptr: *Inode = undefined;
 

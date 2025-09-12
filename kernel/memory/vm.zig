@@ -21,7 +21,7 @@ pub const Error = error{
     NotNullTerminated,
 };
 
-///kernel page table
+/// kernel page table
 var kernel_page_table: riscv.PageTable = undefined;
 
 pub fn kvmMake() !riscv.PageTable {
@@ -102,7 +102,7 @@ pub fn kvmMake() !riscv.PageTable {
     return kpgtbl;
 }
 
-///Initialize the one kernel_page_table
+/// Initialize the one kernel_page_table
 pub fn kvmInit() void {
     kernel_page_table = kvmMake() catch |e| panic(
         @src(),
@@ -111,8 +111,8 @@ pub fn kvmInit() void {
     );
 }
 
-///Switch h/w page table register to the kernel's page table,
-///and enable paging.
+/// Switch h/w page table register to the kernel's page table,
+/// and enable paging.
 pub fn kvmInitHart() void {
     // wait for any previous writes to the page table memory to finish.
     riscv.sfenceVma();
@@ -123,18 +123,18 @@ pub fn kvmInitHart() void {
     riscv.sfenceVma();
 }
 
-///Return the address of the PTE in page table pagetable
-///that corresponds to virtual address va.  If alloc is
-///true, create any required page-table pages.
+/// Return the address of the PTE in page table pagetable
+/// that corresponds to virtual address va.  If alloc is
+/// true, create any required page-table pages.
 //
-///The risc-v Sv39 scheme has three levels of page-table
-///pages. A page-table page contains 512 64-bit PTEs.
-///A 64-bit virtual address is split into five fields:
-///  39..63 -- must be zero.
-///  30..38 -- 9 bits of level-2 index.
-///  21..29 -- 9 bits of level-1 index.
-///  12..20 -- 9 bits of level-0 index.
-///   0..11 -- 12 bits of byte offset within the page.
+/// The risc-v Sv39 scheme has three levels of page-table
+/// pages. A page-table page contains 512 64-bit PTEs.
+/// A 64-bit virtual address is split into five fields:
+///   39..63 -- must be zero.
+///   30..38 -- 9 bits of level-2 index.
+///   21..29 -- 9 bits of level-1 index.
+///   12..20 -- 9 bits of level-0 index.
+///    0..11 -- 12 bits of byte offset within the page.
 pub fn walk(
     page_table: riscv.PageTable,
     virt_addr: u64,
@@ -180,9 +180,9 @@ pub fn walk(
     return &local_page_table[riscv.pageTableIdxFromVa(0, virt_addr)];
 }
 
-///Look up a virtual address, return the physical address,
-///or null if not mapped.
-///Can only be used to look up user pages.
+/// Look up a virtual address, return the physical address,
+/// or null if not mapped.
+/// Can only be used to look up user pages.
 pub fn walkAddr(page_table: riscv.PageTable, virt_addr: u64) !u64 {
     if (virt_addr >= riscv.max_va) return Error.VAOutOfRange;
 
@@ -199,9 +199,9 @@ pub fn walkAddr(page_table: riscv.PageTable, virt_addr: u64) !u64 {
     return phy_addr;
 }
 
-///add a mapping to the kernel page table.
-///only used when booting.
-///does not flush TLB or enable paging.
+/// add a mapping to the kernel page table.
+/// only used when booting.
+/// does not flush TLB or enable paging.
 pub fn kvmMap(
     kpgtbl: riscv.PageTable,
     virt_addr: u64,
@@ -222,11 +222,11 @@ pub fn kvmMap(
     );
 }
 
-///Create PTEs for virtual addresses starting at va that refer to
-///physical addresses starting at pa.
-///va and size MUST be page-aligned.
-///Returns true on success, false if walk() couldn't
-///allocate a needed page-table page.
+/// Create PTEs for virtual addresses starting at va that refer to
+/// physical addresses starting at pa.
+/// va and size MUST be page-aligned.
+/// Returns true on success, false if walk() couldn't
+/// allocate a needed page-table page.
 pub fn mapPages(
     page_table: riscv.PageTable,
     virt_addr: u64,
@@ -283,9 +283,9 @@ pub fn mapPages(
     }
 }
 
-///Remove npages of mappings starting from va. va must be
-///page-aligned. The mappings must exist.
-///Optionally free the physical memory.
+/// Remove npages of mappings starting from va. va must be
+/// page-aligned. The mappings must exist.
+/// Optionally free the physical memory.
 pub fn uvmUnmap(
     page_table: riscv.PageTable,
     virt_addr: u64,
@@ -327,16 +327,16 @@ pub fn uvmUnmap(
     }
 }
 
-///create an empty user page table.
-///returns error if out of memory.
+/// create an empty user page table.
+/// returns error if out of memory.
 pub fn uvmCreate() !riscv.PageTable {
     const page = try kmem.alloc();
     @memset(page, 0);
     return @ptrCast(@alignCast(page));
 }
 
-///Load the user initcode into address 0 of pagetable,
-///for the very first process.
+/// Load the user initcode into address 0 of pagetable,
+/// for the very first process.
 pub fn uvmFirst(page_table: riscv.PageTable, src: []const u8) void {
     if (src.len > riscv.pg_size) panic(
         @src(),
@@ -372,8 +372,8 @@ pub fn uvmFirst(page_table: riscv.PageTable, src: []const u8) void {
     misc.memMove(page, src.ptr, src.len);
 }
 
-///Allocate PTEs and physical memory to grow process from oldsz to
-///newsz, which need not be page aligned.  Returns new size or null on error.
+/// Allocate PTEs and physical memory to grow process from oldsz to
+/// newsz, which need not be page aligned.  Returns new size or null on error.
 pub fn uvmMalloc(
     page_table: riscv.PageTable,
     old_size: u64,
@@ -408,10 +408,10 @@ pub fn uvmMalloc(
     return new_size;
 }
 
-///Deallocate user pages to bring the process size from oldsz to
-///newsz.  oldsz and newsz need not be page-aligned, nor does newsz
-///need to be less than oldsz.  oldsz can be larger than the actual
-///process size.  Returns the new process size.
+/// Deallocate user pages to bring the process size from oldsz to
+/// newsz.  oldsz and newsz need not be page-aligned, nor does newsz
+/// need to be less than oldsz.  oldsz can be larger than the actual
+/// process size.  Returns the new process size.
 pub fn uvmDealloc(
     page_table: riscv.PageTable,
     old_size: u64,
@@ -438,8 +438,8 @@ pub fn uvmDealloc(
     return new_size;
 }
 
-///Recursively free page-table pages.
-///All leaf mappings must already have been removed.
+/// Recursively free page-table pages.
+/// All leaf mappings must already have been removed.
 pub fn freeWalk(page_table: riscv.PageTable) void {
     const v_permission = @intFromEnum(riscv.PteFlag.v);
     const rwx_permission = @intFromEnum(riscv.PteFlag.r) |
@@ -464,8 +464,8 @@ pub fn freeWalk(page_table: riscv.PageTable) void {
     kmem.free(@ptrCast(page_table));
 }
 
-///Free user memory pages,
-///then free page-table pages.
+/// Free user memory pages,
+/// then free page-table pages.
 pub fn uvmFree(page_table: riscv.PageTable, size: u64) void {
     if (size > 0) uvmUnmap(
         page_table,
@@ -476,12 +476,12 @@ pub fn uvmFree(page_table: riscv.PageTable, size: u64) void {
     freeWalk(page_table);
 }
 
-///Given a parent process's page table, copy
-///its memory into a child's page table.
-///Copies both the page table and the
-///physical memory.
-///returns true on success, false on failure.
-///frees any allocated pages on failure.
+/// Given a parent process's page table, copy
+/// its memory into a child's page table.
+/// Copies both the page table and the
+/// physical memory.
+/// returns true on success, false on failure.
+/// frees any allocated pages on failure.
 pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) !void {
     var addr: usize = 0;
 
@@ -535,8 +535,8 @@ pub fn uvmCopy(old: riscv.PageTable, new: riscv.PageTable, size: u64) !void {
     }
 }
 
-///mark a PTE invalid for user access.
-///used by exec for the user stack guard page.
+/// mark a PTE invalid for user access.
+/// used by exec for the user stack guard page.
 pub fn uvmClear(page_table: riscv.PageTable, virt_addr: u64) void {
     (walk(
         page_table,
@@ -549,8 +549,8 @@ pub fn uvmClear(page_table: riscv.PageTable, virt_addr: u64) void {
     )).* &= ~@intFromEnum(riscv.PteFlag.u);
 }
 
-///Copy from kernel to user.
-///Copy len bytes from src to virtual address dstva in a given page table.
+/// Copy from kernel to user.
+/// Copy len bytes from src to virtual address dstva in a given page table.
 pub fn copyOut(
     page_table: riscv.PageTable,
     dst_virt_addr: u64,
@@ -596,8 +596,8 @@ pub fn copyOut(
     }
 }
 
-///Copy from user to kernel.
-///Copy len bytes to dst from virtual address srcva in a given page table.
+/// Copy from user to kernel.
+/// Copy len bytes to dst from virtual address srcva in a given page table.
 pub fn copyIn(
     page_table: riscv.PageTable,
     dst: [*]u8,
@@ -631,9 +631,9 @@ pub fn copyIn(
     }
 }
 
-///Copy a null-terminated string from user to kernel.
-///Copy bytes to dst from virtual address srcva in a given page table,
-///until a '\0', or max.
+/// Copy a null-terminated string from user to kernel.
+/// Copy bytes to dst from virtual address srcva in a given page table,
+/// until a '\0', or max.
 pub fn copyInStr(
     page_table: riscv.PageTable,
     dst: []u8,

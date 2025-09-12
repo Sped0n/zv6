@@ -27,14 +27,14 @@ pub fn initHart() void {
     @as(*volatile u32, @ptrFromInt(memlayout.plicSPriority(hart))).* = 0;
 }
 
-///ask the PLIC what interrupt we should serve.
+/// ask the PLIC what interrupt we should serve.
 pub fn claim() u32 {
     const hart = Cpu.id();
     const irq_ptr: *volatile u32 = @ptrFromInt(memlayout.plicSClaim(hart));
     return irq_ptr.*;
 }
 
-///tell the PLIC we've served this IRQ.
+/// tell the PLIC we've served this IRQ.
 pub fn complete(irq: u32) void {
     const hart = Cpu.id();
     const irq_ptr: *volatile u32 = @ptrFromInt(memlayout.plicSClaim(hart));

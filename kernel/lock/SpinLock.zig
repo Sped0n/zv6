@@ -17,8 +17,8 @@ pub fn init(self: *Self, comptime name: [*:0]const u8) void {
     self.cpu = null;
 }
 
-///Check whether this cpu is holding the lock.
-///Interrupts must be off.
+/// Check whether this cpu is holding the lock.
+/// Interrupts must be off.
 pub fn acquire(self: *Self) void {
     pushOff();
     if (self.holding()) panic(
@@ -41,7 +41,7 @@ pub fn acquire(self: *Self) void {
     self.cpu = Cpu.current();
 }
 
-///Release the lock.
+/// Release the lock.
 pub fn release(self: *Self) void {
     if (!self.holding()) panic(
         @src(),
@@ -63,15 +63,15 @@ pub fn release(self: *Self) void {
     popOff();
 }
 
-///Check whether this cpu is holding the lock.
-///Interrupts must be off.
+/// Check whether this cpu is holding the lock.
+/// Interrupts must be off.
 pub fn holding(self: *Self) bool {
     return self.locked and self.cpu == Cpu.current();
 }
 
-///push_off/pop_off are like intr_off()/intr_on() except that they are matched:
-///it takes two pop_off()s to undo two push_off()s.  Also, if interrupts
-///are initially off, then push_off, pop_off leaves them off.
+/// push_off/pop_off are like intr_off()/intr_on() except that they are matched:
+/// it takes two pop_off()s to undo two push_off()s.  Also, if interrupts
+/// are initially off, then push_off, pop_off leaves them off.
 pub fn pushOff() void {
     const old = riscv.intrGet();
 
@@ -81,9 +81,9 @@ pub fn pushOff() void {
     c.noff += 1;
 }
 
-///push_off/pop_off are like intr_off()/intr_on() except that they are matched:
-///it takes two pop_off()s to undo two push_off()s.  Also, if interrupts
-///are initially off, then push_off, pop_off leaves them off.
+/// push_off/pop_off are like intr_off()/intr_on() except that they are matched:
+/// it takes two pop_off()s to undo two push_off()s.  Also, if interrupts
+/// are initially off, then push_off, pop_off leaves them off.
 pub fn popOff() void {
     const c = Cpu.current();
     if (riscv.intrGet()) {

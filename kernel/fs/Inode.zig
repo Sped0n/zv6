@@ -170,10 +170,10 @@ pub fn get(dev: u32, inum: u32) *Self {
     return inode_table.get(dev, inum);
 }
 
-///Allocate an inode on device dev.
-///Mark it as allocated by giving it type type.
-///Returns an unlocked but allocated and referenced inode,
-///or null if there is no free inode.
+/// Allocate an inode on device dev.
+/// Mark it as allocated by giving it type type.
+/// Returns an unlocked but allocated and referenced inode,
+/// or null if there is no free inode.
 pub fn alloc(dev: u32, _type: InodeType) ?*Self {
     for (1..fs.super_block.n_inodes) |inum| {
         const buf = Buf.readFrom(
@@ -196,10 +196,10 @@ pub fn alloc(dev: u32, _type: InodeType) ?*Self {
     return null;
 }
 
-///Copy a modified in-memory inode to disk.
-///Must be called after every change to an (*Inode)->xxx field
-///that lives on disk.
-///Caller must hold (*Inode)->lock.
+/// Copy a modified in-memory inode to disk.
+/// Must be called after every change to an (*Inode)->xxx field
+/// that lives on disk.
+/// Caller must hold (*Inode)->lock.
 pub fn update(self: *Self) void {
     const buf = Buf.readFrom(
         self.dev,
@@ -215,8 +215,8 @@ pub fn update(self: *Self) void {
     log.write(buf);
 }
 
-///Increment reference count for *Inode.
-///Returns *Inode to enable inode_ptr = inode_ptr.dup() idiom.
+/// Increment reference count for *Inode.
+/// Returns *Inode to enable inode_ptr = inode_ptr.dup() idiom.
 pub fn dup(self: *Self) *Self {
     inode_table.lock.acquire();
     defer inode_table.lock.release();
@@ -225,8 +225,8 @@ pub fn dup(self: *Self) *Self {
     return self;
 }
 
-///Lock the given inode.
-///Reads the inode from disk if necessary.
+/// Lock the given inode.
+/// Reads the inode from disk if necessary.
 pub fn lock(self: *Self) void {
     assert(self.ref > 0, @src());
 
@@ -252,20 +252,20 @@ pub fn lock(self: *Self) void {
     assert(self.dinode.type != .free, @src());
 }
 
-///Unlock the given inode.
+/// Unlock the given inode.
 pub fn unlock(self: *Self) void {
     assert(self._lock.holding() and self.ref > 0, @src());
 
     self._lock.release();
 }
 
-///Drop a reference to an in-memory inode.
-///If that was the last reference, the inode table entry can
-///be recycled.
-///If that was the last reference and the inode has no links
-///to it, free the inode (and its content) on disk.
-///All calls to put() must be inside a transaction in
-///case it has to free the inode.
+/// Drop a reference to an in-memory inode.
+/// If that was the last reference, the inode table entry can
+/// be recycled.
+/// If that was the last reference and the inode has no links
+/// to it, free the inode (and its content) on disk.
+/// All calls to put() must be inside a transaction in
+/// case it has to free the inode.
 pub fn put(self: *Self) void {
     inode_table.lock.acquire();
     defer inode_table.lock.release();
@@ -291,7 +291,7 @@ pub fn put(self: *Self) void {
     self.ref -= 1;
 }
 
-///Common idiom: unlock, then put
+/// Common idiom: unlock, then put
 pub fn unlockPut(self: *Self) void {
     self.unlock();
     self.put();
@@ -304,9 +304,9 @@ pub fn unlockPut(self: *Self) void {
 // are listed in ip->addrs[].  The next NINDIRECT blocks are
 // listed in block ip->addrs[NDIRECT].
 
-///Return the disk block address of the nth block in inode ip.
-///If there is no such block, bmap allocates one.
-///returns null if out of disk space.
+/// Return the disk block address of the nth block in inode ip.
+/// If there is no such block, bmap allocates one.
+/// returns null if out of disk space.
 fn bmap(self: *Self, blockno: u32) ?u32 {
     var addr: u32 = 0;
     var local_blockno = blockno;
@@ -382,8 +382,8 @@ pub fn truncate(self: *Self) void {
     self.update();
 }
 
-///Copy stat infomation from inode
-///Caller must hold self._lock
+/// Copy stat infomation from inode
+/// Caller must hold self._lock
 pub fn stat(self: *Self, stat_ptr: *Stat) void {
     stat_ptr.dev = self.dev;
     stat_ptr.inum = self.inum;
@@ -392,10 +392,10 @@ pub fn stat(self: *Self, stat_ptr: *Stat) void {
     stat_ptr.size = @intCast(self.dinode.size);
 }
 
-///Read data from inode.
-///Caller must hold self->lock.
-///If is_user_dst==true, then dst_addr is a user virtual address;
-///otherwise, dst_addr is a kernel address.
+/// Read data from inode.
+/// Caller must hold self->lock.
+/// If is_user_dst==true, then dst_addr is a user virtual address;
+/// otherwise, dst_addr is a kernel address.
 pub fn read(
     self: *Self,
     is_user_dst: bool,
@@ -444,13 +444,13 @@ pub fn read(
     return total;
 }
 
-///Write data to inode.
-///Caller must hold ip->lock.
-///If user_src==1, then src is a user virtual address;
-///otherwise, src is a kernel address.
-///Returns the number of bytes successfully written.
-///If the return value is less than the requested n,
-///there was an error of some kind.
+/// Write data to inode.
+/// Caller must hold ip->lock.
+/// If user_src==1, then src is a user virtual address;
+/// otherwise, src is a kernel address.
+/// Returns the number of bytes successfully written.
+/// If the return value is less than the requested n,
+/// there was an error of some kind.
 pub fn write(
     self: *Self,
     is_user_src: bool,
@@ -517,8 +517,8 @@ pub fn write(
 
 // Directories -----------------------------------------------------------------
 
-///Look for a directory entry in a directory.
-///If found, set *poff to byte offset of entry.
+/// Look for a directory entry in a directory.
+/// If found, set *poff to byte offset of entry.
 pub fn dirLookUp(self: *Self, name: []const u8, offset_ptr: ?*u32) ?*Self {
     assert(self.dinode.type == .directory, @src());
 

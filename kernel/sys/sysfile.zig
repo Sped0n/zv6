@@ -131,7 +131,7 @@ pub fn fileStat() !u64 {
     return 0;
 }
 
-///Create the path new as a link to the same inode as old.
+/// Create the path new as a link to the same inode as old.
 pub fn link() !u64 {
     var name: [fs.dir_size]u8 = undefined;
     var new: [param.max_path]u8 = undefined;
@@ -201,7 +201,7 @@ pub fn link() !u64 {
     return _error;
 }
 
-///Is the directory dp empty except for "." and ".." ?
+/// Is the directory dp empty except for "." and ".." ?
 fn isDirEmpty(dir_inode: *Inode) bool {
     const step = @sizeOf(fs.DirEntry);
     var dir_entry: fs.DirEntry = undefined;
@@ -308,9 +308,9 @@ pub fn unlink() !u64 {
     return _error;
 }
 
-///Creates a new file or directory at a given path.
-///
-///Return a locked inode.
+/// Creates a new file or directory at a given path.
+/// 
+/// Return a locked inode.
 fn create(_path: []const u8, _type: InodeType, major: u16, minor: u16) !*Inode {
     var name: [fs.dir_size]u8 = undefined;
 

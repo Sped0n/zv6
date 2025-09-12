@@ -7,7 +7,7 @@ pub const InodeType = enum(u16) {
     device = 3,
 };
 
-///On-disk Inode structure
+/// On-disk Inode structure
 pub const DiskInode = extern struct {
     type: InodeType,
     major: u16,

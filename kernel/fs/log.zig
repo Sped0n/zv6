@@ -32,8 +32,8 @@ const SuperBlock = @import("SuperBlock.zig").SuperBlock;
 //   ...
 // Log appends are synchronous.
 
-///Contents of the header block, used for both the on-disk header block
-///and to keep track in memory of logged block# before commit.
+/// Contents of the header block, used for both the on-disk header block
+/// and to keep track in memory of logged block# before commit.
 const Header = extern struct {
     n: u32, // number of blocks
     block: [param.log_size]u32, // disk block numbers
@@ -70,7 +70,7 @@ pub fn init(dev: u32, super_block: *SuperBlock) void {
     recoverFromLog();
 }
 
-///Copy committed blocks from log to their home location
+/// Copy committed blocks from log to their home location
 fn installTrans(recovering: bool) void {
     var tail: u32 = 0;
     while (tail < log.header.n) : (tail += 1) {
@@ -87,7 +87,7 @@ fn installTrans(recovering: bool) void {
     }
 }
 
-///Read the log header from disk into the in-memory log header
+/// Read the log header from disk into the in-memory log header
 fn readHead() void {
     const buf = Buf.readFrom(log.dev, log.start);
     defer buf.release();
@@ -99,9 +99,9 @@ fn readHead() void {
     misc.memMove(log_header, &buf.data, log_header.len);
 }
 
-///Write in-memory log header to disk.
-///This is the true point at which the
-///current transaction commits.
+/// Write in-memory log header to disk.
+/// This is the true point at which the
+/// current transaction commits.
 fn writeHead() void {
     const buf = Buf.readFrom(log.dev, log.start);
     defer buf.release();
@@ -122,7 +122,7 @@ fn recoverFromLog() void {
     writeHead(); // clear the log
 }
 
-///called at the start of each FS syscall
+/// called at the start of each FS syscall
 pub fn beginOp() void {
     log.lock.acquire();
     while (true) {
@@ -139,8 +139,8 @@ pub fn beginOp() void {
     }
 }
 
-///called at the end of each FS system call.
-///commits if this was the last outstanding operation.
+/// called at the end of each FS system call.
+/// commits if this was the last outstanding operation.
 pub fn endOp() void {
     var do_commit = false;
 
@@ -173,7 +173,7 @@ pub fn endOp() void {
     }
 }
 
-///Copy modified blocks from cache to log.
+/// Copy modified blocks from cache to log.
 fn writeLog() void {
     var tail: u32 = 0;
     while (tail < log.header.n) : (tail += 1) {
@@ -200,15 +200,15 @@ fn commit() void {
     writeHead(); // erase the transcation from the log
 }
 
-///Caller has modified b->data and is done with the buffer.
-///Record the block number and pin in the cache by increasing refcnt.
-///commit()/writeLog() will do the disk write.
-///
-///log.write() replaces Buf.writeBack(); a typical use is:
-///  bp = bread(...)
-///  modify bp->data[]
-///  log_write(bp)
-///  brelse(bp)
+/// Caller has modified b->data and is done with the buffer.
+/// Record the block number and pin in the cache by increasing refcnt.
+/// commit()/writeLog() will do the disk write.
+/// 
+/// log.write() replaces Buf.writeBack(); a typical use is:
+///   bp = bread(...)
+///   modify bp->data[]
+///   log_write(bp)
+///   brelse(bp)
 pub fn write(buf: *Buf) void {
     log.lock.acquire();
     defer log.lock.release();

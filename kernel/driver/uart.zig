@@ -81,12 +81,12 @@ pub fn init() void {
     tx_lock.init("uart");
 }
 
-///add a character to the output buffer and tell the
-///UART to start sending if it isn't already.
-///blocks if the output buffer is full.
-///because it may block, it can't be called
-///from interrupts; it's only suitable for use
-///by write().
+/// add a character to the output buffer and tell the
+/// UART to start sending if it isn't already.
+/// blocks if the output buffer is full.
+/// because it may block, it can't be called
+/// from interrupts; it's only suitable for use
+/// by write().
 pub fn putChar(char: u8) void {
     tx_lock.acquire();
     defer tx_lock.release();
@@ -103,10 +103,10 @@ pub fn putChar(char: u8) void {
     start();
 }
 
-///alternate version of uartputc() that doesn't
-///use interrupts, for use by kernel printf() and
-///to echo characters. it spins waiting for the uart's
-///output register to be empty.
+/// alternate version of uartputc() that doesn't
+/// use interrupts, for use by kernel printf() and
+/// to echo characters. it spins waiting for the uart's
+/// output register to be empty.
 pub fn putCharSync(char: u8) void {
     SpinLock.pushOff();
     defer SpinLock.popOff();
@@ -118,10 +118,10 @@ pub fn putCharSync(char: u8) void {
     writeReg(@as(u64, thr), char);
 }
 
-///if the UART is idle, and a character is waiting
-///in the transmit buffer, send it.
-///caller must hold uart_tx_lock.
-///called from both the top- and bottom-half.
+/// if the UART is idle, and a character is waiting
+/// in the transmit buffer, send it.
+/// caller must hold uart_tx_lock.
+/// called from both the top- and bottom-half.
 pub fn start() void {
     while (true) {
         if (tx_w == tx_r) {
@@ -147,8 +147,8 @@ pub fn start() void {
     }
 }
 
-///read one input character from the UART.
-///return null if none is waiting.
+/// read one input character from the UART.
+/// return null if none is waiting.
 pub fn getChar() ?u8 {
     if (readReg(lsr) & 0x01 != 0) {
         return readReg(rhr);

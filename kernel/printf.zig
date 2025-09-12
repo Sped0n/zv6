@@ -13,7 +13,7 @@ var lock_allowed_to_use: bool = true;
 var term_buf: [128]u8 = undefined;
 var term_writer: Io.Writer = undefined;
 
-///Io.Writer.drain implementation for the console
+/// Io.Writer.drain implementation for the console
 fn terminalDrain(w: *Io.Writer, data: []const []const u8, splat: usize) Io.Writer.Error!usize {
     // emit any bytes currently buffered in the interface
     if (w.end != 0) {
@@ -54,7 +54,7 @@ pub fn init() void {
     };
 }
 
-///Print to the console.
+/// Print to the console.
 pub fn printf(comptime format: []const u8, args: anytype) void {
     const local_lock_allowed_to_use = lock_allowed_to_use;
     if (local_lock_allowed_to_use) lock.acquire();
@@ -64,7 +64,7 @@ pub fn printf(comptime format: []const u8, args: anytype) void {
     term_writer.print(format, args) catch unreachable;
 }
 
-///Panic and halt the system.
+/// Panic and halt the system.
 pub fn panic(
     comptime src: ?SourceLocation,
     comptime format: []const u8,
@@ -88,7 +88,7 @@ pub fn checkPanicked() void {
     }
 }
 
-///Assertion.
+/// Assertion.
 pub fn assert(ok: bool, comptime src: SourceLocation) void {
     if (ok) return;
     lock_allowed_to_use = false;

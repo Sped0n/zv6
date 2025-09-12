@@ -29,10 +29,10 @@ fn freeRange(start_addr: u64, end_addr: u64) void {
     }
 }
 
-///Free the page of physical memory pointed at by pa,
-///which normally should have been returned by a
-///call to alloc().  (The exception is when
-///initializing the allocator; see init above.)
+/// Free the page of physical memory pointed at by pa,
+/// which normally should have been returned by a
+/// call to alloc().  (The exception is when
+/// initializing the allocator; see init above.)
 pub fn free(page_ptr: *[4096]u8) void {
     const page_addr: u64 = @intFromPtr(page_ptr);
 
@@ -62,9 +62,9 @@ pub fn free(page_ptr: *[4096]u8) void {
     freelist = r;
 }
 
-///Allocate one 4096-byte page of physical memory.
-///Returns a pointer that the kernel can use.
-///Returns null if the memory cannot be allocated.
+/// Allocate one 4096-byte page of physical memory.
+/// Returns a pointer that the kernel can use.
+/// Returns null if the memory cannot be allocated.
 pub fn alloc() !*[4096]u8 {
     var r: ?*Block = null;
 

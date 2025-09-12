@@ -38,7 +38,7 @@ pub const Error = error{
     AddressOverflow,
 };
 
-///Fetch the u64 at addr from the current process.
+/// Fetch the u64 at addr from the current process.
 pub fn fetchRaw(addr: u64, dst: *u64) !void {
     const proc = Process.current() catch panic(
         @src(),
@@ -56,7 +56,7 @@ pub fn fetchRaw(addr: u64, dst: *u64) !void {
     );
 }
 
-///Fetch the null-terminated string at addr from the current process.
+/// Fetch the null-terminated string at addr from the current process.
 pub fn fetchStr(addr: u64, dst: []u8) !void {
     const proc = Process.current() catch panic(
         @src(),
@@ -71,7 +71,7 @@ pub fn fetchStr(addr: u64, dst: []u8) !void {
     );
 }
 
-///Fetch the system call argument, return it as T
+/// Fetch the system call argument, return it as T
 pub fn argRaw(comptime T: type, n: usize) T {
     @setRuntimeSafety(false);
     const proc = Process.current() catch panic(
@@ -90,8 +90,8 @@ pub fn argRaw(comptime T: type, n: usize) T {
     }
 }
 
-///Fetch the nth word-sized system call argument as a null-terminated string.
-///Copies into buf, at most max.
+/// Fetch the nth word-sized system call argument as a null-terminated string.
+/// Copies into buf, at most max.
 pub fn argStr(n: usize, buf: []u8) !void {
     const addr: u64 = argRaw(u64, n);
     return fetchStr(addr, buf);

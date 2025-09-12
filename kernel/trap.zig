@@ -28,13 +28,13 @@ pub fn init() void {
     ticks_lock.init("time");
 }
 
-///set up to take exceptions and traps while in the kernel
+/// set up to take exceptions and traps while in the kernel
 pub fn initHart() void {
     riscv.stvec.write(@intFromPtr(&kernelVec));
 }
 
-///Handle an interrupt, exception, or system call from user space.
-///called from trampoline.S
+/// Handle an interrupt, exception, or system call from user space.
+/// called from trampoline.S
 pub fn userTrap() callconv(.c) void {
     if ((riscv.sstatus.read() & @intFromEnum(riscv.SStatusValue.spp)) != 0) {
         panic(@src(), "not from user mode", .{});
@@ -89,7 +89,7 @@ pub fn userTrap() callconv(.c) void {
     userTrapRet();
 }
 
-///return to user space
+/// return to user space
 pub fn userTrapRet() callconv(.c) void {
     const proc = Process.current() catch panic(
         @src(),

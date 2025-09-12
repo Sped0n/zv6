@@ -26,7 +26,7 @@ const TrapFrame = @import("trapframe.zig").TrapFrame;
 
 const initcode = @embedFile("initcode");
 
-///trampoline.S
+/// trampoline.S
 const trampoline = @extern(
     *u8,
     .{ .name = "trampoline" },
@@ -86,10 +86,10 @@ var init_proc: *Self = undefined;
 var nextpid: u32 = 1;
 var pid_lock: SpinLock = undefined;
 
-///helps ensure that wakeups of wait()ing
-///parents are not lost. helps obey the
-///memory model when using p->parent.
-///must be acquired before any p->lock.
+/// helps ensure that wakeups of wait()ing
+/// parents are not lost. helps obey the
+/// memory model when using p->parent.
+/// must be acquired before any p->lock.
 var wait_lock: SpinLock = undefined;
 
 const Self = @This();
@@ -101,9 +101,9 @@ pub const Error = error{
     NoProcAvailable,
 };
 
-///Allocate two pages for each process's kernel stack.
-///Map it high in memory, followed by an invalid
-///guard page.
+/// Allocate two pages for each process's kernel stack.
+/// Map it high in memory, followed by an invalid
+/// guard page.
 pub fn mapStacks(kpgtbl: riscv.PageTable) !void {
     // NOTE: don't try to iterate on uninitialized procs
     // see https://github.com/ziglang/zig/issues/13934
@@ -140,7 +140,7 @@ pub fn mapStacks(kpgtbl: riscv.PageTable) !void {
     }
 }
 
-///initialize the proc table
+/// initialize the proc table
 pub fn init() void {
     // NOTE: don't try to iterate on uninitialized procs
     // see https://github.com/ziglang/zig/issues/13934
@@ -153,7 +153,7 @@ pub fn init() void {
     }
 }
 
-///Return the current struct proc *.
+/// Return the current struct proc *.
 pub fn current() !*Self {
     SpinLock.pushOff();
     defer SpinLock.popOff();
@@ -165,7 +165,7 @@ pub fn current() !*Self {
     }
 }
 
-///Return the current struct proc *, or null if none.
+/// Return the current struct proc *, or null if none.
 pub fn currentOrNull() ?*Self {
     SpinLock.pushOff();
     defer SpinLock.popOff();
@@ -228,9 +228,9 @@ fn create() !*Self {
     return proc;
 }
 
-///free a proc structure and the data hanging from it,
-///including user pages.
-///p->lock must be held.
+/// free a proc structure and the data hanging from it,
+/// including user pages.
+/// p->lock must be held.
 fn free(self: *Self) void {
     kmem.free(@ptrCast(self.trap_frame));
     self.trap_frame = undefined;
@@ -249,8 +249,8 @@ fn free(self: *Self) void {
     self.state = .unused;
 }
 
-///Create a user page table for a given process, with no user memory,
-///but with trampoline and trapframe pages.
+/// Create a user page table for a given process, with no user memory,
+/// but with trampoline and trapframe pages.
 pub fn createPageTable(self: *Self) !riscv.PageTable {
     // An empty page table.
     const page_table = try vm.uvmCreate();
@@ -286,15 +286,15 @@ pub fn createPageTable(self: *Self) !riscv.PageTable {
     return page_table;
 }
 
-///Free a process's page table, and free the
-///physical memory it refers to.
+/// Free a process's page table, and free the
+/// physical memory it refers to.
 pub fn freePageTable(page_table: riscv.PageTable, size: u64) void {
     vm.uvmUnmap(page_table, memlayout.trampoline, 1, false);
     vm.uvmUnmap(page_table, memlayout.trap_frame, 1, false);
     vm.uvmFree(page_table, size);
 }
 
-///Set up first user process.
+/// Set up first user process.
 pub fn userInit() void {
     const proc = Self.create() catch |e| panic(
         @src(),
@@ -325,7 +325,7 @@ pub fn userInit() void {
     proc.lock.release();
 }
 
-///Grow or shrink user memory by n bytes.
+/// Grow or shrink user memory by n bytes.
 pub fn growCurrent(n: i32) !void {
     const proc = current() catch panic(
         @src(),
@@ -354,8 +354,8 @@ pub fn growCurrent(n: i32) !void {
     proc.size = size;
 }
 
-///Create a new process, copying the parent.
-///Sets up child kernel stack to return as if from fork() system call.
+/// Create a new process, copying the parent.
+/// Sets up child kernel stack to return as if from fork() system call.
 pub fn fork() !u32 {
     const proc = current() catch panic(
         @src(),
@@ -423,8 +423,8 @@ pub fn fork() !u32 {
     return pid;
 }
 
-///Pass p's abandoned children to init.
-///Caller must hold wait_lock.
+/// Pass p's abandoned children to init.
+/// Caller must hold wait_lock.
 pub fn reParent(self: *Self) void {
     for (0..param.n_proc) |i| {
         const proc = &procs[i];
@@ -435,9 +435,9 @@ pub fn reParent(self: *Self) void {
     }
 }
 
-///Exit the current process.  Does not return.
-///An exited process remains in the zombie state
-///until its parent calls wait().
+/// Exit the current process.  Does not return.
+/// An exited process remains in the zombie state
+/// until its parent calls wait().
 pub fn exit(status: i32) void {
     const proc = current() catch panic(
         @src(),
@@ -538,7 +538,7 @@ pub fn wait(addr: u64) !u32 {
     }
 }
 
-///Give up the CPU for one scheduling round.
+/// Give up the CPU for one scheduling round.
 pub fn yield() void {
     const proc = current() catch panic(
         @src(),
@@ -553,8 +553,8 @@ pub fn yield() void {
     sched();
 }
 
-///A fork child's very first scheduling by scheduler()
-///will swtch to forkret.
+/// A fork child's very first scheduling by scheduler()
+/// will swtch to forkret.
 pub fn forkRet() callconv(.c) void {
     const S = struct {
         var first: bool = true;
@@ -591,8 +591,8 @@ pub fn forkRet() callconv(.c) void {
     trap.userTrapRet();
 }
 
-///Atomically release lock and sleep on chan.
-///Reacquires lock when awakened.
+/// Atomically release lock and sleep on chan.
+/// Reacquires lock when awakened.
 pub fn sleep(chan_addr: u64, lock: *SpinLock) void {
     const proc = current() catch panic(
         @src(),
@@ -618,8 +618,8 @@ pub fn sleep(chan_addr: u64, lock: *SpinLock) void {
     proc.chan_addr = 0;
 }
 
-///Wake up all processes sleeping on chan.
-///Must be called without any p->lock.
+/// Wake up all processes sleeping on chan.
+/// Must be called without any p->lock.
 pub fn wakeUp(chan_addr: u64) void {
     for (0..param.n_proc) |i| {
         const proc = &procs[i];
@@ -633,9 +633,9 @@ pub fn wakeUp(chan_addr: u64) void {
     }
 }
 
-///Kill the process with the given pid.
-///The victim won't exit until it tries to return
-///to user space (see userTrap() in trap.zig).
+/// Kill the process with the given pid.
+/// The victim won't exit until it tries to return
+/// to user space (see userTrap() in trap.zig).
 pub fn kill(pid: u32) !void {
     for (0..param.n_proc) |i| {
         const proc = &procs[i];
@@ -667,9 +667,9 @@ pub fn isKilled(self: *Self) bool {
     return self.killed;
 }
 
-///Copy to either a user address, or kernel address,
-///depending on usr_dst.
-///Returns true on success, false on error.
+/// Copy to either a user address, or kernel address,
+/// depending on usr_dst.
+/// Returns true on success, false on error.
 pub fn eitherCopyOut(
     is_user_dst: bool,
     dst_addr: u64,
@@ -695,9 +695,9 @@ pub fn eitherCopyOut(
     }
 }
 
-///Copy from either a user address, or kernel address,
-///depending on usr_src.
-///Returns true on success, false on error.
+/// Copy from either a user address, or kernel address,
+/// depending on usr_src.
+/// Returns true on success, false on error.
 pub fn eitherCopyIn(dst: [*]u8, is_user_src: bool, src_addr: u64, len: u64) !void {
     const proc = current() catch panic(
         @src(),
@@ -718,9 +718,9 @@ pub fn eitherCopyIn(dst: [*]u8, is_user_src: bool, src_addr: u64, len: u64) !voi
     }
 }
 
-///Print a process listing to console.  For debugging.
-///Runs when user types ^P on console.
-///No lock to avoid wedging a stuck machine further.
+/// Print a process listing to console.  For debugging.
+/// Runs when user types ^P on console.
+/// No lock to avoid wedging a stuck machine further.
 pub fn dump() void {
     printf("\n", .{});
     for (0..param.n_proc) |i| {

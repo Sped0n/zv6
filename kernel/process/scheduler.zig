@@ -8,13 +8,13 @@ const Process = @import("Process.zig");
 
 extern fn swtch(a: *Context, b: *Context) void;
 
-///Per-CPU process scheduler.
-///Each CPU calls scheduler() after setting itself up.
-///Scheduler never returns.  It loops, doing:
-/// - choose a process to run.
-/// - swtch to start running that process.
-/// - eventually that process transfers control
-///   via swtch back to the scheduler.
+/// Per-CPU process scheduler.
+/// Each CPU calls scheduler() after setting itself up.
+/// Scheduler never returns.  It loops, doing:
+///  - choose a process to run.
+///  - swtch to start running that process.
+///  - eventually that process transfers control
+///    via swtch back to the scheduler.
 pub fn scheduler() void {
     const cpu = Cpu.current();
 
@@ -54,13 +54,13 @@ pub fn scheduler() void {
     }
 }
 
-///Switch to scheduler.  Must hold only p->lock
-///and have changed proc->state. Saves and restores
-///intena because intena is a property of this
-///kernel thread, not this CPU. It should
-///be proc->intena and proc->noff, but that would
-///break in the few places where a lock is held but
-///there's no process.
+/// Switch to scheduler.  Must hold only p->lock
+/// and have changed proc->state. Saves and restores
+/// intena because intena is a property of this
+/// kernel thread, not this CPU. It should
+/// be proc->intena and proc->noff, but that would
+/// break in the few places where a lock is held but
+/// there's no process.
 pub fn sched() void {
     const proc = Process.current() catch panic(
         @src(),

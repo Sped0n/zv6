@@ -2,11 +2,11 @@ const memMove = @import("../misc.zig").memMove;
 const Buf = @import("Buf.zig");
 const fs = @import("fs.zig");
 
-///Disk layout:
-///[ boot block | super block | log | inode blocks | free bit map | data blocks]
-///
-///mkfs computes the super block and builds an initial file system. The
-///super block describes the disk layout:
+/// Disk layout:
+/// [ boot block | super block | log | inode blocks | free bit map | data blocks]
+/// 
+/// mkfs computes the super block and builds an initial file system. The
+/// super block describes the disk layout:
 pub const SuperBlock = extern struct {
     magic: u32, // Must be fs_magic
     size: u32, // Size of file system image (blocks)

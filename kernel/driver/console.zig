@@ -17,9 +17,9 @@ inline fn ctrl(comptime x: u8) u8 {
     return x - '@';
 }
 
-///send one character to the uart.
-///called by printf(), and to echo input characters,
-///but not from write().
+/// send one character to the uart.
+/// called by printf(), and to echo input characters,
+/// but not from write().
 pub fn putChar(char: u8) void {
     if (char == backspace) {
         // if the user typed backspace, overwrite with a space.
@@ -31,7 +31,7 @@ pub fn putChar(char: u8) void {
     }
 }
 
-///user write()s to the console go here.
+/// user write()s to the console go here.
 pub fn write(is_user_src: bool, src_addr: u64, len: u32) ?u32 {
     var i: u32 = 0;
 

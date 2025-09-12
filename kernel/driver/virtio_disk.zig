@@ -11,35 +11,35 @@ const virtio = @import("../virtio.zig");
 
 const Info = struct { buf: ?*Buf, status: u8 };
 var disk = struct {
-    ///a set (not a ring) of DMA descriptors, with which the
-    ///driver tells the device where to read and write individual
-    ///disk operations. there are NUM descriptors.
-    ///most commands consist of a "chain" (a linked list) of a couple of
-    ///these descriptors.
+    /// a set (not a ring) of DMA descriptors, with which the
+    /// driver tells the device where to read and write individual
+    /// disk operations. there are NUM descriptors.
+    /// most commands consist of a "chain" (a linked list) of a couple of
+    /// these descriptors.
     desc: *[virtio.num]virtio.VQDesc,
 
-    ///a ring in which the driver writes descriptor numbers
-    ///that the driver would like the device to process.  it only
-    ///includes the head descriptor of each chain. the ring has
-    ///NUM elements.
+    /// a ring in which the driver writes descriptor numbers
+    /// that the driver would like the device to process.  it only
+    /// includes the head descriptor of each chain. the ring has
+    /// NUM elements.
     avail: *virtio.VQAvail,
 
-    ///a ring in which the device writes descriptor numbers that
-    ///the device has finished processing (just the head of each chain).
-    ///there are NUM used ring entries.
+    /// a ring in which the device writes descriptor numbers that
+    /// the device has finished processing (just the head of each chain).
+    /// there are NUM used ring entries.
     used: *virtio.VQUsed,
 
     // our own book-keeping
     free: [virtio.num]bool, // is a descriptor free?
     used_index: u16, // we've looked this far in used[2..virtio.num]
 
-    ///track info about in-flight operations,
-    ///for use when completion interrupt arrives.
-    ///indexed by first descriptor index of chain.
+    /// track info about in-flight operations,
+    /// for use when completion interrupt arrives.
+    /// indexed by first descriptor index of chain.
     info: [virtio.num]Info,
 
-    ///disk command headers.
-    ///one-for-one with descriptors, for convenience.
+    /// disk command headers.
+    /// one-for-one with descriptors, for convenience.
     ops: [virtio.num]virtio.BlockRequest,
 
     lock: SpinLock,
@@ -170,7 +170,7 @@ pub fn init() void {
     // plic.zig and trap.zig arrange for interrupts from irq
 }
 
-///find a free descriptor, mark it non-free, return its index.
+/// find a free descriptor, mark it non-free, return its index.
 fn allocDesc() ?u16 {
     for (0..virtio.num) |i| {
         if (disk.free[i]) {
@@ -181,7 +181,7 @@ fn allocDesc() ?u16 {
     return null;
 }
 
-///mark a descriptor as free.
+/// mark a descriptor as free.
 fn freeDesc(i: usize) void {
     assert(i < virtio.num, @src());
     assert(disk.free[i] == false, @src());
@@ -196,7 +196,7 @@ fn freeDesc(i: usize) void {
     Process.wakeUp(@intFromPtr(disk.desc));
 }
 
-///free a chain of descriptors
+/// free a chain of descriptors
 fn freeChain(i: usize) void {
     var local_i = i;
     while (true) {
@@ -214,8 +214,8 @@ fn freeChain(i: usize) void {
     }
 }
 
-///allocate three descriptors (they need not be contiguous).
-///disk transfers always use three descriptors.
+/// allocate three descriptors (they need not be contiguous).
+/// disk transfers always use three descriptors.
 fn allocThreeDescs(indexes: *[3]u16) bool {
     for (0..3) |i| {
         if (allocDesc()) |index| {

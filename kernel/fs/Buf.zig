@@ -21,9 +21,9 @@ var bcache = struct {
     lock: SpinLock,
     buf: [param.n_buf]Self,
 
-    ///Linked list of all buffers, through prev/next.
-    ///Sorted by how recently the buffer was used.
-    ///head.next is most recent, head.prev is least.
+    /// Linked list of all buffers, through prev/next.
+    /// Sorted by how recently the buffer was used.
+    /// head.next is most recent, head.prev is least.
     head: Self,
 }{
     .lock = undefined,
@@ -67,9 +67,9 @@ pub fn init() void {
     }
 }
 
-///Look through buffer cache for block on device dev.
-///If not found, allocate a buffer.
-///In either case, return locked buffer.
+/// Look through buffer cache for block on device dev.
+/// If not found, allocate a buffer.
+/// In either case, return locked buffer.
 fn get(dev: u32, blockno: u32) *Self {
     var buf: *Self = undefined;
 
@@ -104,7 +104,7 @@ fn get(dev: u32, blockno: u32) *Self {
     panic(@src(), "no buf available", .{});
 }
 
-///Return a locked buf with the content of the indicated block.
+/// Return a locked buf with the content of the indicated block.
 pub fn readFrom(dev: u32, blockno: u32) *Self {
     var buf = get(dev, blockno);
     if (!buf.valid) {
@@ -114,7 +114,7 @@ pub fn readFrom(dev: u32, blockno: u32) *Self {
     return buf;
 }
 
-///Write buf's contents to disk. Must be locked.
+/// Write buf's contents to disk. Must be locked.
 pub fn writeBack(self: *Self) void {
     if (!self.lock.holding()) panic(
         @src(),
@@ -124,8 +124,8 @@ pub fn writeBack(self: *Self) void {
     virtio_disk.diskReadWrite(self, true);
 }
 
-///Release a locked buffer.
-///Move to the head of the most recently-used list.
+/// Release a locked buffer.
+/// Move to the head of the most recently-used list.
 pub fn release(self: *Self) void {
     if (!self.lock.holding()) panic(
         @src(),

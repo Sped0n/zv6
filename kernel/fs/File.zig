@@ -67,7 +67,7 @@ pub fn init() void {
     file_table.lock.init("ftable");
 }
 
-///Allocate a file structure.
+/// Allocate a file structure.
 pub fn alloc() !*Self {
     file_table.lock.acquire();
     defer file_table.lock.release();
@@ -83,7 +83,7 @@ pub fn alloc() !*Self {
     return Error.OutOfSpace;
 }
 
-///Increment ref count for file f.
+/// Increment ref count for file f.
 pub fn dup(self: *Self) *Self {
     file_table.lock.acquire();
     defer file_table.lock.release();
@@ -93,8 +93,8 @@ pub fn dup(self: *Self) *Self {
     return self;
 }
 
-///Close file f.
-///Decrement ref count, close when reaches 0.
+/// Close file f.
+/// Decrement ref count, close when reaches 0.
 pub fn close(self: *Self) void {
     var tmp: Self = undefined;
 
@@ -158,7 +158,7 @@ pub fn stat(self: *Self, user_virt_addr: u64) !void {
     );
 }
 
-///Read from file.
+/// Read from file.
 pub fn read(self: *Self, user_virt_addr: u64, len: u32) !u32 {
     if (!self.readable) return Error.PermissionDenied;
 
@@ -203,7 +203,7 @@ pub fn read(self: *Self, user_virt_addr: u64, len: u32) !u32 {
     }
 }
 
-///Write to file.
+/// Write to file.
 pub fn write(self: *Self, user_virt_addr: u64, len: u32) !u32 {
     if (!self.writable) return Error.PermissionDenied;
 

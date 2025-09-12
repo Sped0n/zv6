@@ -58,8 +58,8 @@ pub const phy_stop = kernel_base + 128 * 1024 * 1024;
 // in both user and kernel space.
 pub const trampoline: u64 = riscv.max_va - @as(u64, riscv.pg_size);
 
-///map kernel stacks beneath the trampoline,
-///each surrounded by invalid guard pages.
+/// map kernel stacks beneath the trampoline,
+/// each surrounded by invalid guard pages.
 pub inline fn kernelStack(proc_index: u64) u64 {
     return trampoline - (2 + proc_index * 3) * riscv.pg_size;
 }

@@ -51,7 +51,7 @@ pub fn init(dev: u32) void {
 
 // Blocks ----------------------------------------------------------------------
 
-///Zero a block
+/// Zero a block
 pub const block = struct {
     fn zero(dev: u32, blockno: u32) void {
         const buf = Buf.readFrom(dev, blockno);
@@ -61,8 +61,8 @@ pub const block = struct {
         log.write(buf);
     }
 
-    ///Allocate a zeroed disk block, return null if out of disk space.
-    ///Also mark the relevant bit in bitmap to 1.
+    /// Allocate a zeroed disk block, return null if out of disk space.
+    /// Also mark the relevant bit in bitmap to 1.
     pub fn alloc(dev: u32) ?u32 {
         var buf: *Buf = undefined;
         var blockno: u32 = 0;
@@ -95,8 +95,8 @@ pub const block = struct {
         return null;
     }
 
-    ///Free a disk block.
-    ///Also mark the relevant bit in bitmap to 0.
+    /// Free a disk block.
+    /// Also mark the relevant bit in bitmap to 0.
     pub fn free(dev: u32, blockno: u32) void {
         const buf = Buf.readFrom(
             dev,

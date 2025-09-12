@@ -8,8 +8,8 @@
 //
 const memlayout = @import("memlayout.zig");
 
-///virtio mmio control registers, mapped starting at 0x10001000.
-///from qemu virtio_mmio.h
+/// virtio mmio control registers, mapped starting at 0x10001000.
+/// from qemu virtio_mmio.h
 pub const MMIO = struct {
     const Self = @This();
 
@@ -54,7 +54,7 @@ pub const MMIO = struct {
     }
 };
 
-///status register bits, from qemu virtio_config.h
+/// status register bits, from qemu virtio_config.h
 pub const ConfigStatus = struct {
     pub const acknowledge = 1;
     pub const driver = 2;
@@ -75,18 +75,18 @@ pub const RingFeature = struct {
     pub const event_index = 29;
 };
 
-///this many virtio descriptors.
-///must be a power of two.
+/// this many virtio descriptors.
+/// must be a power of two.
 pub const num = 8;
 
-///VRingDesc flags
+/// VRingDesc flags
 pub const VRingDescFlag = enum(u16) {
     uninitialized = 0,
     next = 1,
     write = 2,
     next_and_write = 3,
 };
-///a single descriptors, from the spec.
+/// a single descriptors, from the spec.
 pub const VQDesc = extern struct {
     addr: u64,
     len: u32,
@@ -94,7 +94,7 @@ pub const VQDesc = extern struct {
     next: u16,
 };
 
-///the (entire) avail ring, from the spec.
+/// the (entire) avail ring, from the spec.
 pub const VQAvail = extern struct {
     flags: u16, // always zero
     index: u16, // driver will
@@ -102,8 +102,8 @@ pub const VQAvail = extern struct {
     unused: u16,
 };
 
-///one entry in the "used" rinf, with which the
-///device tells the driver about completed requests.
+/// one entry in the "used" rinf, with which the
+/// device tells the driver about completed requests.
 pub const VQUsedElem = extern struct {
     id: u32, // index of start of completed descriptor chain
     len: u32,
@@ -114,16 +114,16 @@ pub const VQUsed = extern struct {
     ring: [num]VQUsedElem,
 };
 
-///these are specific to virtio block devices, e.g. disks,
-///described in Section 5.2 of the spec.
+/// these are specific to virtio block devices, e.g. disks,
+/// described in Section 5.2 of the spec.
 pub const BlockType = enum(u32) {
     in = 0, // read the disk
     out = 1, // write the disk
 };
 
-///the format of the first descriptor in a disk request.
-///to be followed by two more descriptors containing
-///the block, and a one-byte status.
+/// the format of the first descriptor in a disk request.
+/// to be followed by two more descriptors containing
+/// the block, and a one-byte status.
 pub const BlockRequest = extern struct {
     type: BlockType,
     reserved: u32,
