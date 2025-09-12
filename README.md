@@ -19,7 +19,7 @@ All commands assume you are in the project root.
 
 ### Prerequisites
 
-- Zig 0.14
+- Zig 0.15
 - QEMU
 - Perl
 - LLDB (optional, for debugging)

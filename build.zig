@@ -214,7 +214,8 @@ pub fn build(b: *std.Build) void {
     });
 
     {
-        const ulib = b.addStaticLibrary(.{
+        const ulib = b.addLibrary(.{
+            .linkage = .static,
             .name = "ulib",
             .root_module = ulib_module,
         });
@@ -281,11 +282,14 @@ pub fn build(b: *std.Build) void {
     }
 
     // initcode ----------------------------------------------------------------
-    const initcode_object = b.addObject(.{
-        .name = "initcode",
+    const initcode_module = b.addModule("kernel", .{
         .root_source_file = null,
         .target = rv64,
         .optimize = optimize,
+    });
+    const initcode_object = b.addObject(.{
+        .name = "initcode",
+        .root_module = initcode_module,
     });
     initcode_object.addAssemblyFile(b.path("user/initcode.S"));
     initcode_object.addIncludePath(b.path("."));
