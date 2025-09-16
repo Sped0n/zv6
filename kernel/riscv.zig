@@ -63,7 +63,7 @@ pub const mstatus = Register("mstatus");
 // mepc ------------------------------------------------------------------------
 
 /// Writer Machine Execption Program Counter, mepc
-/// 
+///
 /// mepc holds the instruction address to which a return
 /// from exception will go
 pub const mepc = WriteOnlyRegister("mepc");
@@ -114,7 +114,7 @@ pub const mie = Register("mie");
 // sepc ------------------------------------------------------------------------
 
 /// Supervisor Exception Program Counter, sepc
-/// 
+///
 /// sepc holds the instruction address to which a
 /// return from exception will go.
 pub const sepc = Register("sepc");
@@ -132,7 +132,7 @@ pub const mideleg = Register("mideleg");
 // stvec -----------------------------------------------------------------------
 
 /// Supervisor Trap-Vector Base Address, stvec
-/// 
+///
 /// Low two bits are mode.
 pub const stvec = Register("stvec");
 
@@ -170,7 +170,7 @@ pub inline fn makeSatp(pagetable: PageTable) u64 {
 }
 
 /// Supervisor Address Translation and Protection table, satp
-/// 
+///
 /// satp holds the address of the page table.
 pub const satp = Register("satp");
 
@@ -285,11 +285,11 @@ pub const PteFlag = enum(u64) {
 };
 
 /// Physical Address to Page Table Entry
-pub inline fn pa2Pte(pa: u64) Pte {
+pub inline fn pteFromPa(pa: u64) Pte {
     return @as(u64, pa >> 12) << 10;
 }
 /// Page Table Entry to Physical Address
-pub inline fn pte2Pa(pte: Pte) u64 {
+pub inline fn paFromPte(pte: Pte) u64 {
     return @as(u64, pte >> 10) << 12;
 }
 /// Page Table Entry flags
