@@ -105,16 +105,14 @@ pub const Error = error{
 /// Map it high in memory, followed by an invalid
 /// guard page.
 pub fn mapStacks(kpgtbl: riscv.PageTable) !void {
-    // NOTE: don't try to iterate on uninitialized procs
-    // see https://github.com/ziglang/zig/issues/13934
     for (0..param.n_proc) |i| {
         const page0 = try kmem.alloc();
+        errdefer kmem.free(page0);
         const page1 = try kmem.alloc();
-        errdefer {
-            kmem.free(page0);
-            kmem.free(page1);
-        }
+        errdefer kmem.free(page1);
+
         const virt_addr = memlayout.kernelStack(i);
+
         vm.kvmMap(
             kpgtbl,
             virt_addr,
@@ -142,12 +140,9 @@ pub fn mapStacks(kpgtbl: riscv.PageTable) !void {
 
 /// initialize the proc table
 pub fn init() void {
-    // NOTE: don't try to iterate on uninitialized procs
-    // see https://github.com/ziglang/zig/issues/13934
     pid_lock.init("nextpid");
     wait_lock.init("wait_lock");
-    for (0..param.n_proc) |i| {
-        const proc = &(procs[i]);
+    for (&procs, 0..) |*proc, i| {
         proc.lock.init("proc");
         proc.kstack = memlayout.kernelStack(i);
     }
@@ -185,36 +180,29 @@ pub fn allocPid() u32 {
 
 fn create() !*Self {
     var proc: *Self = undefined;
-
     traverse_blk: {
-        for (0..param.n_proc) |i| {
-            proc = &procs[i];
-            proc.lock.acquire();
-            if (proc.state == .unused) {
+        for (&procs) |*_proc| {
+            _proc.lock.acquire();
+            if (_proc.state == .unused) {
+                proc = _proc;
                 break :traverse_blk;
             } else {
-                proc.lock.release();
+                _proc.lock.release();
             }
         }
         return Error.NoProcAvailable;
     }
+    errdefer proc.lock.release();
 
     proc.pid = allocPid();
     proc.state = .used;
+    errdefer proc.free();
 
     // Allocate a trapframe page.
-    proc.trap_frame = @ptrCast(@alignCast(kmem.alloc() catch |e| {
-        proc.free();
-        proc.lock.release();
-        return e;
-    }));
+    proc.trap_frame = @ptrCast(@alignCast(try kmem.alloc()));
 
     // An empty user page table.
-    proc.page_table = createPageTable(proc) catch |e| {
-        proc.free();
-        proc.lock.release();
-        return e;
-    };
+    proc.page_table = try createPageTable(proc);
 
     // Set up new context to start executing at forkret,
     // which returns to user space.
@@ -235,8 +223,8 @@ fn free(self: *Self) void {
     kmem.free(@ptrCast(self.trap_frame));
     self.trap_frame = undefined;
 
-    if (self.page_table) |pt|
-        freePageTable(pt, self.size);
+    if (self.page_table) |page_table|
+        freePageTable(page_table, self.size);
     self.page_table = null;
 
     self.size = 0;
@@ -426,8 +414,7 @@ pub fn fork() !u32 {
 /// Pass p's abandoned children to init.
 /// Caller must hold wait_lock.
 pub fn reParent(self: *Self) void {
-    for (0..param.n_proc) |i| {
-        const proc = &procs[i];
+    for (&procs) |*proc| {
         if (proc.parent == self) {
             proc.parent = init_proc;
             wakeUp(@intFromPtr(init_proc));
@@ -502,9 +489,7 @@ pub fn wait(addr: u64) !u32 {
     while (true) {
         // scan through table looking for exited children.
         var have_kids = false;
-        for (0..param.n_proc) |i| {
-            const proc = &procs[i];
-
+        for (&procs) |*proc| {
             if (proc.parent != curr_proc) continue;
             // make sure the child isn't still in exit() or swtch().
             proc.lock.acquire();
@@ -621,8 +606,7 @@ pub fn sleep(chan_addr: u64, lock: *SpinLock) void {
 /// Wake up all processes sleeping on chan.
 /// Must be called without any p->lock.
 pub fn wakeUp(chan_addr: u64) void {
-    for (0..param.n_proc) |i| {
-        const proc = &procs[i];
+    for (&procs) |*proc| {
         if (proc != currentOrNull()) {
             proc.lock.acquire();
             defer proc.lock.release();
@@ -637,9 +621,7 @@ pub fn wakeUp(chan_addr: u64) void {
 /// The victim won't exit until it tries to return
 /// to user space (see userTrap() in trap.zig).
 pub fn kill(pid: u32) !void {
-    for (0..param.n_proc) |i| {
-        const proc = &procs[i];
-
+    for (&procs) |*proc| {
         proc.lock.acquire();
         defer proc.lock.release();
 
@@ -723,9 +705,7 @@ pub fn eitherCopyIn(dst: [*]u8, is_user_src: bool, src_addr: u64, len: u64) !voi
 /// No lock to avoid wedging a stuck machine further.
 pub fn dump() void {
     printf("\n", .{});
-    for (0..param.n_proc) |i| {
-        const proc = procs[i];
-
+    for (procs) |proc| {
         if (proc.state == .unused) continue;
         printf("{d: <7} {s: ^10} {s}\n", .{ proc.pid, @tagName(proc.state), proc.name });
     }

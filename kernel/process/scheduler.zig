@@ -26,8 +26,7 @@ pub fn scheduler() void {
         riscv.intrOn();
 
         var found = false;
-        for (0..param.n_proc) |i| {
-            const proc = &Process.procs[i];
+        for (&Process.procs) |*proc| {
             proc.lock.acquire();
             defer proc.lock.release();
 
