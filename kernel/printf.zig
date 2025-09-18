@@ -56,11 +56,14 @@ pub fn init() void {
 
 /// Print to the console.
 pub fn printf(comptime format: []const u8, args: anytype) void {
-    const local_lock_allowed_to_use = lock_allowed_to_use;
-    if (local_lock_allowed_to_use) lock.acquire();
-    defer if (local_lock_allowed_to_use) lock.release();
+    if (!lock_allowed_to_use) {
+        term_writer.print(format, args) catch unreachable;
+        return;
+    }
 
-    // print is defined on *Io.Writer
+    lock.acquire();
+    defer lock.release();
+
     term_writer.print(format, args) catch unreachable;
 }
 
