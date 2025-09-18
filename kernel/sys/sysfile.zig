@@ -91,10 +91,10 @@ pub fn read() !u64 {
     const addr: u64 = argRaw(u64, 1);
     const len: u32 = argRaw(u32, 2);
 
-    return @intCast(file.read(
+    return @intCast(try file.read(
         addr,
         len,
-    ) catch |e| return e);
+    ));
 }
 
 pub fn write() !u64 {
@@ -156,49 +156,37 @@ pub fn link() !u64 {
     inode.update();
     inode.unlock();
 
-    var _error: anyerror = undefined;
-    ok_blk: {
-        // Resolve new path's parent directory.
-        const parent_inode = path.toParentInode(
-            mem.sliceTo(&new, 0),
-            &name,
-        ) catch |e| {
-            _error = e;
-            break :ok_blk;
-        };
+    defer inode.put();
 
-        parent_inode.lock();
-        if (parent_inode.dev != inode.dev) {
-            // Hard link can only be created on the same device.
-            parent_inode.unlockPut();
-
-            _error = Error.SameDeviceRequired;
-            break :ok_blk;
-        }
-        // Also create a new directory entry in the parent directory with
-        // the same name that points to the inum of original file.
-        parent_inode.dirLink(
-            mem.sliceTo(&name, 0),
-            inode.inum,
-        ) catch |e| {
-            parent_inode.unlockPut();
-
-            _error = e;
-            break :ok_blk;
-        };
-        parent_inode.unlockPut();
-        inode.put();
-
-        return 0;
+    errdefer {
+        // Undo.
+        inode.lock();
+        inode.dinode.nlink -= 1;
+        inode.update();
+        inode.unlock();
     }
 
-    // Undo.
-    inode.lock();
-    inode.dinode.nlink -= 1;
-    inode.update();
-    inode.unlockPut();
+    // Resolve new path's parent directory.
+    const parent_inode = try path.toParentInode(
+        mem.sliceTo(&new, 0),
+        &name,
+    );
+    parent_inode.lock();
+    defer parent_inode.unlockPut();
 
-    return _error;
+    if (parent_inode.dev != inode.dev) {
+        // Hard link can only be created on the same device.
+        return Error.SameDeviceRequired;
+    }
+
+    // Also create a new directory entry in the parent directory with
+    // the same name that points to the inum of original file.
+    try parent_inode.dirLink(
+        mem.sliceTo(&name, 0),
+        inode.inum,
+    );
+
+    return 0;
 }
 
 /// Is the directory dp empty except for "." and ".." ?
@@ -233,31 +221,33 @@ pub fn unlink() !u64 {
     log.beginOp();
     defer log.endOp();
 
-    // Get parent directory and its name.
-    const parent_inode = try path.toParentInode(
-        path_slice,
-        &name,
-    );
-    parent_inode.lock();
+    var inode: *Inode = undefined;
 
-    var _error: anyerror = undefined;
-    ok_blk: {
+    {
+        // Get parent directory and its name.
+        const parent_inode = try path.toParentInode(
+            path_slice,
+            &name,
+        );
+        parent_inode.lock();
+        defer parent_inode.unlockPut();
+
         const name_slice: []const u8 = mem.sliceTo(&name, 0);
         if (mem.eql(u8, name_slice, ".") or
             mem.eql(u8, name_slice, ".."))
         {
             // Cannot unlink "." or "..".
-            _error = Error.TryToUnlinkDots;
-            break :ok_blk;
+            return Error.TryToUnlinkDots;
         }
 
         var offset: u32 = 0;
         // Lookup inode in directory.
-        const inode = parent_inode.dirLookUp(name_slice, &offset) orelse {
-            _error = Error.LookUpFailed;
-            break :ok_blk;
+        inode = parent_inode.dirLookUp(name_slice, &offset) orelse {
+            return Error.LookUpFailed;
         };
+
         inode.lock();
+        errdefer inode.unlockPut();
 
         if (inode.dinode.nlink < 1) {
             // File-system inconsistency.
@@ -265,10 +255,7 @@ pub fn unlink() !u64 {
         }
         if (inode.dinode.type == .directory and !isDirEmpty(inode)) {
             // Directories must be empty before they can be unlinked.
-            inode.unlockPut();
-
-            _error = Error.TryToUnlinkNotEmptyDir;
-            break :ok_blk;
+            return Error.TryToUnlinkNotEmptyDir;
         }
 
         // Clear direcotry entry.
@@ -293,23 +280,18 @@ pub fn unlink() !u64 {
             parent_inode.dinode.nlink -= 1;
             parent_inode.update();
         }
-        parent_inode.unlockPut();
-
-        // Decrement link count of inode being unlinked.
-        inode.dinode.nlink -= 1;
-        inode.update();
-        inode.unlockPut();
-
-        return 0;
     }
 
-    parent_inode.unlockPut();
+    // Decrement link count of inode being unlinked.
+    inode.dinode.nlink -= 1;
+    inode.update();
+    inode.unlockPut();
 
-    return _error;
+    return 0;
 }
 
 /// Creates a new file or directory at a given path.
-/// 
+///
 /// Return a locked inode.
 fn create(_path: []const u8, _type: InodeType, major: u16, minor: u16) !*Inode {
     var name: [fs.dir_size]u8 = undefined;
@@ -321,11 +303,8 @@ fn create(_path: []const u8, _type: InodeType, major: u16, minor: u16) !*Inode {
     const name_slice = mem.sliceTo(&name, 0);
 
     parent_inode.lock();
-
-    var inode: *Inode = undefined;
-    if (parent_inode.dirLookUp(name_slice, null)) |_inode| {
+    if (parent_inode.dirLookUp(name_slice, null)) |inode| {
         // Entry already existed.
-        inode = _inode;
         parent_inode.unlockPut();
         inode.lock();
         if (_type == .file and (inode.dinode.type == .file or
@@ -338,10 +317,9 @@ fn create(_path: []const u8, _type: InodeType, major: u16, minor: u16) !*Inode {
             return Error.EntryAlreadyExisted;
         }
     }
-
     defer parent_inode.unlockPut();
 
-    inode = Inode.alloc(
+    var inode = Inode.alloc(
         parent_inode.dev,
         _type,
     ) orelse return Error.InodeAllocFailed;
@@ -353,42 +331,30 @@ fn create(_path: []const u8, _type: InodeType, major: u16, minor: u16) !*Inode {
     inode.dinode.nlink = 1;
     inode.update();
 
-    var _error: anyerror = undefined;
-    ok_blk: {
-        if (_type == .directory) { // Create . and .. entries.
-            // No inode_ptr.dinode.nlink += 1: avoid cyclic ref count.
-            inode.dirLink(".", inode.inum) catch |e| {
-                _error = e;
-                break :ok_blk;
-            };
-            inode.dirLink("..", parent_inode.inum) catch |e| {
-                _error = e;
-                break :ok_blk;
-            };
-        }
-
-        // Create directory entry in parent directory.
-        parent_inode.dirLink(name_slice, inode.inum) catch |e| {
-            _error = e;
-            break :ok_blk;
-        };
-
-        if (_type == .directory) {
-            // Update parent directory link count (if directory),
-            // now that success is guaranteed.
-            parent_inode.dinode.nlink += 1; // for ".."
-            parent_inode.update();
-        }
-
-        return inode;
+    errdefer {
+        // De-allocate inode_ptr.
+        inode.dinode.nlink = 0;
+        inode.update();
+        inode.unlockPut();
     }
 
-    // De-allocate inode_ptr.
-    inode.dinode.nlink = 0;
-    inode.update();
-    inode.unlockPut();
+    if (_type == .directory) { // Create . and .. entries.
+        // No inode_ptr.dinode.nlink += 1: avoid cyclic ref count.
+        try inode.dirLink(".", inode.inum);
+        try inode.dirLink("..", parent_inode.inum);
+    }
 
-    return _error;
+    // Create directory entry in parent directory.
+    try parent_inode.dirLink(name_slice, inode.inum);
+
+    if (_type == .directory) {
+        // Update parent directory link count (if directory),
+        // now that success is guaranteed.
+        parent_inode.dinode.nlink += 1; // for ".."
+        parent_inode.update();
+    }
+
+    return inode;
 }
 
 pub fn open() !u64 {
@@ -415,25 +381,20 @@ pub fn open() !u64 {
             return Error.PermissionDenied;
         }
     }
+    errdefer inode.put();
+    defer inode.unlock();
 
     if (inode.dinode.type == .device and
         inode.dinode.major >= param.n_dev)
     {
         // Major device number invalid.
-        inode.unlockPut();
         return Error.DeviceMajorOutOfRange;
     }
 
     // Allocate file structure and file descriptor.
-    const file = File.alloc() catch |e| {
-        inode.unlockPut();
-        return e;
-    };
-    const fd = fdAlloc(file) catch |e| {
-        file.close();
-        inode.unlockPut();
-        return e;
-    };
+    const file = try File.alloc();
+    errdefer file.close();
+    const fd = try fdAlloc(file);
 
     // Initialize file structure.
     if (inode.dinode.type == .device) {
@@ -451,8 +412,6 @@ pub fn open() !u64 {
     // Handle truncation.
     if (omode & @intFromEnum(OpenMode.truncate) != 0 and
         inode.dinode.type == .file) inode.truncate();
-
-    inode.unlock();
 
     return fd;
 }
@@ -507,11 +466,12 @@ pub fn chdir() !u64 {
         inode = try path.toInode(path_slice);
 
         inode.lock();
+        errdefer inode.put();
+        defer inode.unlock();
+
         if (inode.dinode.type != .directory) {
-            inode.unlockPut();
             return Error.ChdirOnNonDirectory;
         }
-        inode.unlock();
         proc.cwd.?.put();
     }
 
@@ -558,43 +518,26 @@ pub fn pipe() !u64 {
     var read_file: *File = undefined;
     var write_file: *File = undefined;
     try Pipe.alloc(&read_file, &write_file);
+    errdefer read_file.close();
+    errdefer write_file.close();
 
-    const fd0: u32 = @intCast(fdAlloc(read_file) catch |e| {
-        read_file.close();
-        write_file.close();
-        return e;
-    });
-    const fd1: u32 = @intCast(fdAlloc(write_file) catch |e| {
-        proc.ofiles[fd0] = null;
-        read_file.close();
-        write_file.close();
-        return e;
-    });
+    const fd0: u32 = @intCast(try fdAlloc(read_file));
+    errdefer proc.ofiles[fd0] = null;
+    const fd1: u32 = @intCast(try fdAlloc(write_file));
+    errdefer proc.ofiles[fd1] = null;
 
-    vm.copyOut(
+    try vm.copyOut(
         proc.page_table.?,
         fd_array,
         @as([*]const u8, @ptrCast(&fd0)),
         @sizeOf(@TypeOf(fd0)),
-    ) catch |e| {
-        proc.ofiles[fd0] = null;
-        proc.ofiles[fd1] = null;
-        read_file.close();
-        write_file.close();
-        return e;
-    };
-    vm.copyOut(
+    );
+    try vm.copyOut(
         proc.page_table.?,
         fd_array + @sizeOf(@TypeOf(fd0)),
         @as([*]const u8, @ptrCast(&fd1)),
         @sizeOf(@TypeOf(fd1)),
-    ) catch |e| {
-        proc.ofiles[fd0] = null;
-        proc.ofiles[fd1] = null;
-        read_file.close();
-        write_file.close();
-        return e;
-    };
+    );
 
     return 0;
 }
