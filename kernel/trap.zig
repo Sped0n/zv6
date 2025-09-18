@@ -69,7 +69,7 @@ pub fn userTrap() callconv(.c) void {
         // so enable only now that we're done with those registers.
         riscv.intrOn();
 
-        syscall.syscall();
+        syscall.syscall() catch {};
     } else {
         which_dev = devIntr();
 

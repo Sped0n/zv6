@@ -97,7 +97,7 @@ pub fn argStr(n: usize, buf: []u8) !void {
     return fetchStr(addr, buf);
 }
 
-pub fn syscall() void {
+pub fn syscall() !void {
     const proc = Process.current() catch panic(
         @src(),
         "current proc is null",
@@ -118,137 +118,35 @@ pub fn syscall() void {
         return;
     };
 
-    var _error: anyerror = undefined;
-    ok_blk: {
-        switch (syscall_id) {
-            .fork => {
-                a0.* = sysproc.fork() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-            .exit => {
-                a0.* = sysproc.exit();
-            },
-            .wait => {
-                a0.* = sysproc.wait() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-            .pipe => {
-                a0.* = sysfile.pipe() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-            .read => {
-                a0.* = sysfile.read() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-            .kill => {
-                a0.* = sysproc.kill() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-            .exec => {
-                a0.* = sysfile.exec() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-            .fstat => {
-                a0.* = sysfile.fileStat() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-            .chdir => {
-                a0.* = sysfile.chdir() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-            .dup => {
-                a0.* = sysfile.dup() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-            .getpid => {
-                a0.* = sysproc.getPid() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-            .sbrk => {
-                a0.* = sysproc.sbrk() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-            .sleep => {
-                a0.* = sysproc.sleep() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-            .uptime => {
-                a0.* = sysproc.uptime();
-            },
-            .open => {
-                a0.* = sysfile.open() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-            .write => {
-                a0.* = sysfile.write() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-            .mknod => {
-                a0.* = sysfile.mknod() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-            .unlink => {
-                a0.* = sysfile.unlink() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-            .link => {
-                a0.* = sysfile.link() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-            .mkdir => {
-                a0.* = sysfile.mkdir() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-            .close => {
-                a0.* = sysfile.close() catch |e| {
-                    _error = e;
-                    break :ok_blk;
-                };
-            },
-        }
+    errdefer @as(*i64, @ptrCast(a0)).* = -1;
+    // errdefer |e| printf(
+    //     "\nsyscall({s}) failed with {s}\n",
+    //     .{ std.enums.tagName(SysCallID, syscall_id) orelse "null", @errorName(e) },
+    // );
 
-        return;
+    switch (syscall_id) {
+        .fork => a0.* = try sysproc.fork(),
+        .exit => a0.* = sysproc.exit(),
+        .wait => a0.* = try sysproc.wait(),
+        .pipe => a0.* = try sysfile.pipe(),
+        .read => a0.* = try sysfile.read(),
+        .kill => a0.* = try sysproc.kill(),
+        .exec => a0.* = try sysfile.exec(),
+        .fstat => a0.* = try sysfile.fileStat(),
+        .chdir => a0.* = try sysfile.chdir(),
+        .dup => a0.* = try sysfile.dup(),
+        .getpid => a0.* = try sysproc.getPid(),
+        .sbrk => a0.* = try sysproc.sbrk(),
+        .sleep => a0.* = try sysproc.sleep(),
+        .uptime => a0.* = sysproc.uptime(),
+        .open => a0.* = try sysfile.open(),
+        .write => a0.* = try sysfile.write(),
+        .mknod => a0.* = try sysfile.mknod(),
+        .unlink => a0.* = try sysfile.unlink(),
+        .link => a0.* = try sysfile.link(),
+        .mkdir => a0.* = try sysfile.mkdir(),
+        .close => a0.* = try sysfile.close(),
     }
 
-    // printf(
-    //     "\nsyscall({s}) failed with {s}\n",
-    //     .{ std.enums.tagName(SysCallID, syscall_id) orelse "null", @errorName(_error) },
-    // );
-    @as(*i64, @ptrCast(a0)).* = -1;
+    return;
 }
