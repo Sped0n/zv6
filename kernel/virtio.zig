@@ -55,24 +55,27 @@ pub const MMIO = struct {
 };
 
 /// status register bits, from qemu virtio_config.h
-pub const ConfigStatus = struct {
-    pub const acknowledge = 1;
-    pub const driver = 2;
-    pub const driver_ok = 4;
-    pub const features_ok = 8;
+pub const Status = enum(u32) {
+    acknowledge = 1 << 0,
+    driver = 1 << 1,
+    driver_ok = 1 << 2,
+    features_ok = 1 << 3,
 };
 
-// device feature bits
-pub const feature_any_layout = 27;
-pub const BlockFeature = struct {
-    pub const ro = 5; // Disk is read-only
-    pub const scsi = 7; // Supports scsi command passthru
-    pub const config_wce = 11; // Writeback mode available in config
-    pub const mq = 12; // support more than one vq
-};
-pub const RingFeature = struct {
-    pub const indirect_desc = 28;
-    pub const event_index = 29;
+/// device feature bits
+pub const Feature = enum(u32) {
+    // Block device features
+    block_ro = 1 << 5, // Disk is read-only
+    block_scsi = 1 << 7, // Supports scsi command passthru
+    block_config_wce = 1 << 11, // Writeback mode available in config
+    block_mq = 1 << 12, // Support more than one vq
+
+    // Transport/common feature
+    any_layout = 1 << 27,
+
+    // Ring features
+    ring_indirect_desc = 1 << 28,
+    ring_event_index = 1 << 29,
 };
 
 /// this many virtio descriptors.

@@ -1,4 +1,4 @@
-const Buf = @import("../fs/Buf.zig");
+const Buffer = @import("../fs/Buffer.zig");
 const fs = @import("../fs/fs.zig");
 const SleepLock = @import("../lock/SleepLock.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
@@ -9,7 +9,15 @@ const panic = @import("../printf.zig").panic;
 const Process = @import("../process/Process.zig");
 const virtio = @import("../virtio.zig");
 
-const Info = struct { buf: ?*Buf, status: u8 };
+const InFlightOperationStatus = enum(u8) {
+    started = 0xff,
+    finished = 0,
+};
+const InFlightOperation = struct {
+    buffer: ?*Buffer,
+    status: InFlightOperationStatus,
+};
+
 var disk = struct {
     /// a set (not a ring) of DMA descriptors, with which the
     /// driver tells the device where to read and write individual
@@ -36,11 +44,11 @@ var disk = struct {
     /// track info about in-flight operations,
     /// for use when completion interrupt arrives.
     /// indexed by first descriptor index of chain.
-    info: [virtio.num]Info,
+    in_flight_operations: [virtio.num]InFlightOperation,
 
     /// disk command headers.
     /// one-for-one with descriptors, for convenience.
-    ops: [virtio.num]virtio.BlockRequest,
+    block_requests: [virtio.num]virtio.BlockRequest,
 
     lock: SpinLock,
 }{
@@ -49,8 +57,11 @@ var disk = struct {
     .used = undefined,
     .free = [_]bool{false} ** virtio.num,
     .used_index = 0,
-    .info = [_]Info{Info{ .buf = null, .status = 0 }} ** virtio.num,
-    .ops = [_]virtio.BlockRequest{virtio.BlockRequest{
+    .in_flight_operations = [_]InFlightOperation{InFlightOperation{
+        .buffer = null,
+        .status = .finished,
+    }} ** virtio.num,
+    .block_requests = [_]virtio.BlockRequest{virtio.BlockRequest{
         .type = .in,
         .sector = 0,
         .reserved = 0,
@@ -72,31 +83,33 @@ pub fn init() void {
     virtio.MMIO.write(.status, status);
 
     // set ACKNOWLEDGE status bit
-    status |= virtio.ConfigStatus.acknowledge;
+    // status |= flagsMask(virtio.Status, .{.acknowledge});
+    status |= @intFromEnum(virtio.Status.acknowledge);
     virtio.MMIO.write(.status, status);
 
     // set DRIVER status bit
-    status |= virtio.ConfigStatus.driver;
+    status |= @intFromEnum(virtio.Status.driver);
     virtio.MMIO.write(.status, status);
 
     // negotiate features
     var features = virtio.MMIO.read(.device_features);
-    features &= ~@as(u32, (1 << virtio.BlockFeature.ro));
-    features &= ~@as(u32, (1 << virtio.BlockFeature.scsi));
-    features &= ~@as(u32, (1 << virtio.BlockFeature.config_wce));
-    features &= ~@as(u32, (1 << virtio.BlockFeature.mq));
-    features &= ~@as(u32, (1 << virtio.feature_any_layout));
-    features &= ~@as(u32, (1 << virtio.RingFeature.event_index));
-    features &= ~@as(u32, (1 << virtio.RingFeature.indirect_desc));
+    const unsupported = @intFromEnum(virtio.Feature.block_ro) |
+        @intFromEnum(virtio.Feature.block_scsi) |
+        @intFromEnum(virtio.Feature.block_config_wce) |
+        @intFromEnum(virtio.Feature.block_mq) |
+        @intFromEnum(virtio.Feature.any_layout) |
+        @intFromEnum(virtio.Feature.ring_event_index) |
+        @intFromEnum(virtio.Feature.ring_indirect_desc);
+    features &= ~unsupported;
     virtio.MMIO.write(.driver_features, features);
 
     // tell device that feature negotiation is complete.
-    status |= virtio.ConfigStatus.features_ok;
+    status |= @intFromEnum(virtio.Status.features_ok);
     virtio.MMIO.write(.status, status);
 
     // re-read status to ensure features_ok is set.
     status = virtio.MMIO.read(.status);
-    if (status & virtio.ConfigStatus.features_ok == 0)
+    if (status & @intFromEnum(virtio.Status.features_ok) == 0)
         panic(@src(), "features_ok unset", .{});
 
     // initialize queue 0.
@@ -164,7 +177,7 @@ pub fn init() void {
     for (0..virtio.num) |i| disk.free[i] = true;
 
     // tell device we're completely ready.
-    status |= virtio.ConfigStatus.driver_ok;
+    status |= @intFromEnum(virtio.Status.driver_ok);
     virtio.MMIO.write(.status, status);
 
     // plic.zig and trap.zig arrange for interrupts from irq
@@ -228,8 +241,8 @@ fn allocThreeDescs(indexes: *[3]u16) bool {
     return true;
 }
 
-pub fn diskReadWrite(buf: *Buf, is_write: bool) void {
-    const sector: u64 = buf.blockno * (fs.block_size / 512);
+pub fn diskReadWrite(buffer: *Buffer, is_write: bool) void {
+    const sector: u64 = buffer.blockno * (fs.block_size / 512);
 
     disk.lock.acquire();
     defer disk.lock.release();
@@ -250,31 +263,31 @@ pub fn diskReadWrite(buf: *Buf, is_write: bool) void {
     // format the three descriptors.
     // qemu's virtio-blk.c reads them.
 
-    var req: *virtio.BlockRequest = &disk.ops[indexes[0]];
+    var request: *virtio.BlockRequest = &disk.block_requests[indexes[0]];
 
-    req.type = if (is_write) .out else .in;
-    req.reserved = 0;
-    req.sector = sector;
+    request.type = if (is_write) .out else .in;
+    request.reserved = 0;
+    request.sector = sector;
 
-    disk.desc[indexes[0]].addr = @intFromPtr(req);
-    disk.desc[indexes[0]].len = @sizeOf(@TypeOf(req.*));
+    disk.desc[indexes[0]].addr = @intFromPtr(request);
+    disk.desc[indexes[0]].len = @sizeOf(@TypeOf(request.*));
     disk.desc[indexes[0]].flags = .next;
     disk.desc[indexes[0]].next = indexes[1];
 
-    disk.desc[indexes[1]].addr = @intFromPtr(&buf.data);
+    disk.desc[indexes[1]].addr = @intFromPtr(&buffer.data);
     disk.desc[indexes[1]].len = fs.block_size;
     disk.desc[indexes[1]].flags = if (is_write) .next else .next_and_write;
     disk.desc[indexes[1]].next = indexes[2];
 
-    disk.info[indexes[0]].status = 0xff; // device writes 0 on success
-    disk.desc[indexes[2]].addr = @intFromPtr(&(disk.info[indexes[0]].status));
+    disk.in_flight_operations[indexes[0]].status = .started; // device writes 0 on success
+    disk.desc[indexes[2]].addr = @intFromPtr(&(disk.in_flight_operations[indexes[0]].status));
     disk.desc[indexes[2]].len = 1;
     disk.desc[indexes[2]].flags = .write; // device writes the status
     disk.desc[indexes[2]].next = 0;
 
     // record struct Buf for intr().
-    buf.owned_by_disk = true;
-    disk.info[indexes[0]].buf = buf;
+    buffer.owned_by_disk = true;
+    disk.in_flight_operations[indexes[0]].buffer = buffer;
 
     // tell the device the first index in our chain of descriptors.
     disk.avail.ring[disk.avail.index % virtio.num] = indexes[0];
@@ -286,15 +299,13 @@ pub fn diskReadWrite(buf: *Buf, is_write: bool) void {
 
     virtio.MMIO.write(.queue_notify, 0); // value is queue number
 
-    // panic(@src(), "hello", .{});
-
     // Wait for intr() to say request is finished.
-    while (buf.owned_by_disk) Process.sleep(
-        @intFromPtr(buf),
+    while (buffer.owned_by_disk) Process.sleep(
+        @intFromPtr(buffer),
         &disk.lock,
     );
 
-    disk.info[indexes[0]].buf = null;
+    disk.in_flight_operations[indexes[0]].buffer = null;
     freeChain(indexes[0]);
 }
 
@@ -322,11 +333,11 @@ pub fn intr() void {
         fence();
         const id = disk.used.ring[disk.used_index % virtio.num].id;
 
-        assert(disk.info[id].status == 0, @src());
+        assert(disk.in_flight_operations[id].status == .finished, @src());
 
-        if (disk.info[id].buf) |buf| {
-            buf.owned_by_disk = false;
-            Process.wakeUp(@intFromPtr(buf));
+        if (disk.in_flight_operations[id].buffer) |buffer| {
+            buffer.owned_by_disk = false;
+            Process.wakeUp(@intFromPtr(buffer));
         } else {
             panic(@src(), "expect a pre-stored buf channel", .{});
         }
