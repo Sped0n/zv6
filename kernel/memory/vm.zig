@@ -24,7 +24,7 @@ pub const Error = error{
 var kernel_page_table: riscv.PageTable = undefined;
 
 pub fn kvmMake() !riscv.PageTable {
-    const kpgtbl: riscv.PageTable = @ptrCast(@alignCast(try kmem.alloc()));
+    const kpgtbl: riscv.PageTable = @ptrCast(try kmem.alloc());
 
     const mem: *[4096]u8 = @ptrCast(kpgtbl);
     @memset(mem, 0);
@@ -165,7 +165,7 @@ pub fn walk(
 
         const page = try kmem.alloc();
         @memset(page, 0);
-        current_page_table = @ptrCast(@alignCast(page));
+        current_page_table = @ptrCast(page);
         pte_ptr.* = riscv.pteFromPa(
             @intFromPtr(current_page_table),
         ) | @intFromEnum(riscv.PteFlag.v);
@@ -324,7 +324,7 @@ pub fn uvmUnmap(
 pub fn uvmCreate() !riscv.PageTable {
     const page = try kmem.alloc();
     @memset(page, 0);
-    return @ptrCast(@alignCast(page));
+    return @ptrCast(page);
 }
 
 /// Load the user initcode into address 0 of pagetable,
@@ -451,7 +451,7 @@ pub fn freeWalk(page_table: riscv.PageTable) void {
             );
         }
     }
-    kmem.free(@ptrCast(page_table));
+    kmem.free(@ptrCast(@alignCast(page_table)));
 }
 
 /// Free user memory pages,

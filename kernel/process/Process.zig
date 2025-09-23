@@ -32,7 +32,7 @@ const trampoline = @extern(
     .{ .name = "trampoline" },
 );
 
-pub const ProcState = enum {
+const ProcState = enum {
     unused,
     used,
     sleeping,
@@ -199,7 +199,7 @@ fn create() !*Self {
     errdefer proc.free();
 
     // Allocate a trapframe page.
-    proc.trap_frame = @ptrCast(@alignCast(try kmem.alloc()));
+    proc.trap_frame = @ptrCast(try kmem.alloc());
 
     // An empty user page table.
     proc.page_table = try createPageTable(proc);
@@ -220,7 +220,7 @@ fn create() !*Self {
 /// including user pages.
 /// p->lock must be held.
 fn free(self: *Self) void {
-    kmem.free(@ptrCast(self.trap_frame));
+    kmem.free(@ptrCast(@alignCast(self.trap_frame)));
     self.trap_frame = undefined;
 
     if (self.page_table) |page_table|

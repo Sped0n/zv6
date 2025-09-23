@@ -6,13 +6,17 @@ const riscv = @import("../riscv.zig");
 
 const end = @extern(*u8, .{ .name = "end" });
 
-const Block = struct {
-    next: ?*Block,
+/// Free list element, located at the beginning of each free page.
+const FreeBlock = struct {
+    next: ?*FreeBlock,
 };
 
 var lock: SpinLock = undefined;
-var freelist: ?*Block = null;
+var free_list = struct {
+    head: ?*FreeBlock,
+}{ .head = null };
 
+pub const Page = *align(4096) [4096]u8;
 pub const Error = error{OutOfMemory};
 
 pub fn init() void {
@@ -21,11 +25,11 @@ pub fn init() void {
 }
 
 fn freeRange(start_addr: u64, end_addr: u64) void {
-    var local_start_addr: u64 = riscv.pgRoundUp(start_addr);
-    while (local_start_addr + riscv.pg_size <= end_addr) : ({
-        local_start_addr += riscv.pg_size;
+    var anchor: u64 = riscv.pgRoundUp(start_addr);
+    while (anchor + riscv.pg_size <= end_addr) : ({
+        anchor += riscv.pg_size;
     }) {
-        free(@ptrFromInt(local_start_addr));
+        free(@ptrFromInt(anchor));
     }
 }
 
@@ -33,8 +37,8 @@ fn freeRange(start_addr: u64, end_addr: u64) void {
 /// which normally should have been returned by a
 /// call to alloc().  (The exception is when
 /// initializing the allocator; see init above.)
-pub fn free(page_ptr: *[4096]u8) void {
-    const page_addr: u64 = @intFromPtr(page_ptr);
+pub fn free(page: Page) void {
+    const page_addr: u64 = @intFromPtr(page);
 
     // not aligned.
     if (page_addr % riscv.pg_size != 0) {
@@ -51,37 +55,37 @@ pub fn free(page_ptr: *[4096]u8) void {
     }
 
     // fill with junk to catch dangling refs.
-    @memset(page_ptr, 1);
+    @memset(page, 1);
 
-    var r: *Block = @ptrFromInt(@intFromPtr(page_ptr));
+    var free_block: *FreeBlock = @ptrCast(@alignCast(page));
 
     lock.acquire();
     defer lock.release();
 
-    r.next = freelist;
-    freelist = r;
+    free_block.next = free_list.head;
+    free_list.head = free_block;
 }
 
 /// Allocate one 4096-byte page of physical memory.
 /// Returns a pointer that the kernel can use.
 /// Returns null if the memory cannot be allocated.
-pub fn alloc() !*[4096]u8 {
-    var r: ?*Block = null;
+pub fn alloc() !Page {
+    var free_block: ?*FreeBlock = null;
 
     {
         lock.acquire();
         defer lock.release();
-        r = freelist;
-        if (r) |page| {
-            freelist = @as(*Block, @ptrCast(page)).next;
+        free_block = free_list.head;
+        if (free_block) |fb| {
+            free_list.head = fb.next;
         }
     }
 
-    if (r) |page| {
+    if (free_block) |fb| {
         // fill with junk
-        const mem = @as(*[4096]u8, @ptrCast(page));
-        @memset(mem, 5);
-        return mem;
+        const page = @as(Page, @ptrCast(@alignCast(fb)));
+        @memset(page, 5);
+        return page;
     }
 
     return Error.OutOfMemory;

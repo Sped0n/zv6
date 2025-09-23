@@ -180,13 +180,13 @@ pub fn alloc(dev: u32, _type: InodeType) ?*Self {
         );
         defer buffer.release();
 
-        const disk_inode_ptr = &@as(
-            [*]align(1) DiskInode,
+        const disk_inode = &@as(
+            [*]DiskInode,
             @ptrCast(&buffer.data),
         )[inum % fs.inodes_per_block];
-        if (disk_inode_ptr.type == .free) { // a free node
-            @memset(@as([*]u8, @ptrCast(disk_inode_ptr))[0..@sizeOf(DiskInode)], 0);
-            disk_inode_ptr.type = _type;
+        if (disk_inode.type == .free) { // a free node
+            @memset(@as([*]u8, @ptrCast(disk_inode))[0..@sizeOf(DiskInode)], 0);
+            disk_inode.type = _type;
             log.write(buffer); // mark it allocated on the disk
             return get(dev, @intCast(inum));
         }
@@ -205,16 +205,16 @@ pub fn update(self: *Self) void {
     );
     defer buffer.release();
 
-    const disk_inode_ptr = &@as(
-        [*]align(1) DiskInode,
+    const disk_inode = &@as(
+        [*]DiskInode,
         @ptrCast(&buffer.data),
     )[self.inum % fs.inodes_per_block];
-    disk_inode_ptr.* = self.dinode;
+    disk_inode.* = self.dinode;
     log.write(buffer);
 }
 
 /// Increment reference count for *Inode.
-/// Returns *Inode to enable inode_ptr = inode_ptr.dup() idiom.
+/// Returns *Inode to enable inode = inode.dup() idiom.
 pub fn dup(self: *Self) *Self {
     inode_table.lock.acquire();
     defer inode_table.lock.release();
@@ -239,11 +239,11 @@ pub fn lock(self: *Self) void {
         );
         defer buffer.release();
 
-        const disk_inode_ptr = &@as(
-            [*]align(1) DiskInode,
+        const disk_inode = &@as(
+            [*]DiskInode,
             @ptrCast(&buffer.data),
         )[self.inum % fs.inodes_per_block];
-        (&self.dinode).* = disk_inode_ptr.*;
+        (&self.dinode).* = disk_inode.*;
     }
 
     self.valid = true;
@@ -331,7 +331,7 @@ fn bmap(self: *Self, blockno: u32) ?u32 {
         const buffer = Buffer.readFrom(self.dev, addr);
         defer buffer.release();
 
-        const buffer_data: [*]align(1) u32 = @ptrCast(&buffer.data);
+        const buffer_data: [*]u32 = @ptrCast(&buffer.data);
 
         addr = buffer_data[_blockno];
         if (addr == 0) {
@@ -364,11 +364,11 @@ pub fn truncate(self: *Self) void {
             );
             defer buffer.release();
 
-            const buf_data: [*]align(1) u32 = @ptrCast(&buffer.data);
+            const buffer_data: [*]u32 = @ptrCast(&buffer.data);
             for (0..fs.n_indirect) |i| {
-                if (buf_data[i] != 0) fs.block.free(
+                if (buffer_data[i] != 0) fs.block.free(
                     self.dev,
-                    buf_data[i],
+                    buffer_data[i],
                 );
             }
         }

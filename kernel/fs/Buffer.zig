@@ -13,7 +13,7 @@ lock: SleepLock,
 refcnt: u32,
 prev: *Self,
 next: *Self,
-data: [fs.block_size]u8,
+data: [fs.block_size]u8 align(@alignOf(usize)),
 
 const Self = @This();
 

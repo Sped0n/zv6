@@ -28,7 +28,7 @@ pub fn alloc(file_0: **File, file_1: **File) !void {
     file_1.* = try File.alloc();
     errdefer file_1.*.close();
 
-    const pipe: *Self = @ptrCast(@alignCast(try kmem.alloc()));
+    const pipe: *Self = @ptrCast(try kmem.alloc());
 
     pipe.read_open = true;
     pipe.write_open = true;
@@ -62,7 +62,7 @@ pub fn close(self: *Self, writable: bool) void {
         }
         free_pipe = self.read_open == false and self.write_open == false;
     }
-    if (free_pipe) kmem.free(@ptrCast(self));
+    if (free_pipe) kmem.free(@ptrCast(@alignCast(self)));
 }
 
 pub fn write(self: *Self, virt_addr: u64, len: u32) !u32 {

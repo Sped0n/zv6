@@ -138,7 +138,7 @@ pub fn init() void {
         .{},
     );
     @memset(desc_page, 0);
-    disk.desc = @ptrCast(@alignCast(desc_page));
+    disk.desc = @ptrCast(desc_page);
 
     const avail_page = kmem.alloc() catch panic(
         @src(),
@@ -146,7 +146,7 @@ pub fn init() void {
         .{},
     );
     @memset(avail_page, 0);
-    disk.avail = @ptrCast(@alignCast(avail_page));
+    disk.avail = @ptrCast(avail_page);
 
     const used_page = kmem.alloc() catch panic(
         @src(),
@@ -154,7 +154,7 @@ pub fn init() void {
         .{},
     );
     @memset(used_page, 0);
-    disk.used = @ptrCast(@alignCast(used_page));
+    disk.used = @ptrCast(used_page);
 
     // set queue size.
     virtio.MMIO.write(.queue_num, virtio.num);

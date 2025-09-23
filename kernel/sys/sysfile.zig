@@ -332,14 +332,14 @@ fn create(_path: []const u8, _type: InodeType, major: u16, minor: u16) !*Inode {
     inode.update();
 
     errdefer {
-        // De-allocate inode_ptr.
+        // De-allocate inode.
         inode.dinode.nlink = 0;
         inode.update();
         inode.unlockPut();
     }
 
     if (_type == .directory) { // Create . and .. entries.
-        // No inode_ptr.dinode.nlink += 1: avoid cyclic ref count.
+        // No inode.dinode.nlink += 1: avoid cyclic ref count.
         try inode.dirLink(".", inode.inum);
         try inode.dirLink("..", parent_inode.inum);
     }
@@ -486,7 +486,7 @@ pub fn exec() !u64 {
 
     const uargv: u64 = argRaw(u64, 1);
 
-    var argv = [_]?*[4096]u8{null} ** param.max_arg;
+    var argv = [_]?kmem.Page{null} ** param.max_arg;
     defer for (0..param.max_arg) |j| {
         if (argv[j]) |page| {
             kmem.free(page);
