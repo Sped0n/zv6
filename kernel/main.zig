@@ -10,7 +10,7 @@ const Process = @import("process/Process.zig");
 const scheduler = @import("process/scheduler.zig");
 const riscv = @import("riscv.zig");
 const trap = @import("trap.zig");
-const Buf = @import("fs/Buf.zig");
+const Buffer = @import("fs/Buffer.zig");
 const Inode = @import("fs/Inode.zig");
 const File = @import("fs/File.zig");
 const virtio_disk = @import("driver/virtio_disk.zig");
@@ -30,7 +30,7 @@ pub fn main() callconv(.c) void {
         trap.initHart();
         plic.init();
         plic.initHart();
-        Buf.init();
+        Buffer.init();
         Inode.init();
         File.init();
         virtio_disk.init();

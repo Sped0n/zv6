@@ -72,11 +72,10 @@ pub fn alloc() !*Self {
     file_table.lock.acquire();
     defer file_table.lock.release();
 
-    for (0..param.n_file) |i| {
-        const f = &file_table.files[i];
-        if (f.ref == 0) {
-            f.ref = 1;
-            return f;
+    for (&file_table.files) |*file| {
+        if (file.ref == 0) {
+            file.ref = 1;
+            return file;
         }
     }
 
@@ -143,7 +142,7 @@ pub fn stat(self: *Self, user_virt_addr: u64) !void {
     if (self.inode) |inode| {
         inode.lock();
         defer inode.unlock();
-        inode.stat(&_stat);
+        inode.statCopyTo(&_stat);
     } else {
         panic(@src(), "inode is null", .{});
         return;

@@ -1,10 +1,10 @@
 const memMove = @import("../misc.zig").memMove;
-const Buf = @import("Buf.zig");
+const Buffer = @import("Buffer.zig");
 const fs = @import("fs.zig");
 
 /// Disk layout:
 /// [ boot block | super block | log | inode blocks | free bit map | data blocks]
-/// 
+///
 /// mkfs computes the super block and builds an initial file system. The
 /// super block describes the disk layout:
 pub const SuperBlock = extern struct {
@@ -31,10 +31,10 @@ pub const SuperBlock = extern struct {
     }
 
     pub fn read(self: *Self, dev: u32) void {
-        const buf = Buf.readFrom(dev, 1);
-        defer buf.release();
+        const buffer = Buffer.readFrom(dev, 1);
+        defer buffer.release();
 
-        memMove(@as([*]u8, @ptrCast(self)), &buf.data, @sizeOf(Self));
+        memMove(@as([*]u8, @ptrCast(self)), &buffer.data, @sizeOf(Self));
     }
 
     pub inline fn getBitmapBlockNo(self: *Self, blockno: u32) u32 {

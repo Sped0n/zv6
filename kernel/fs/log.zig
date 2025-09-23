@@ -5,7 +5,7 @@ const param = @import("../param.zig");
 const assert = @import("../printf.zig").assert;
 const panic = @import("../printf.zig").panic;
 const Process = @import("../process/Process.zig");
-const Buf = @import("Buf.zig");
+const Buffer = @import("Buffer.zig");
 const fs = @import("fs.zig");
 const SuperBlock = @import("SuperBlock.zig").SuperBlock;
 
@@ -37,6 +37,7 @@ const SuperBlock = @import("SuperBlock.zig").SuperBlock;
 const Header = extern struct {
     n: u32, // number of blocks
     block: [param.log_size]u32, // disk block numbers
+
 };
 
 var log = struct {
@@ -67,43 +68,41 @@ pub fn init(dev: u32, super_block: *SuperBlock) void {
     log.start = super_block.log_start;
     log.size = super_block.n_log;
     log.dev = dev;
-    recoverFromLog();
+    tryRecover();
 }
 
 /// Copy committed blocks from log to their home location
-fn installTrans(recovering: bool) void {
+fn installTransaction(try_recover: bool) void {
     var tail: u32 = 0;
     while (tail < log.header.n) : (tail += 1) {
-        const log_buf = Buf.readFrom(log.dev, log.start + tail + 1);
-        const disk_buf = Buf.readFrom(log.dev, log.header.block[tail]);
-        defer {
-            log_buf.release();
-            disk_buf.release();
-        }
+        const log_buffer = Buffer.readFrom(log.dev, log.start + tail + 1);
+        const disk_buffer = Buffer.readFrom(log.dev, log.header.block[tail]);
+        defer disk_buffer.release();
+        defer log_buffer.release();
 
-        memMove(&disk_buf.data, &log_buf.data, fs.block_size);
-        disk_buf.writeBack();
-        if (!recovering) disk_buf.unPin();
+        memMove(&disk_buffer.data, &log_buffer.data, fs.block_size);
+        disk_buffer.writeBack();
+        if (!try_recover) disk_buffer.unPin();
     }
 }
 
 /// Read the log header from disk into the in-memory log header
-fn readHead() void {
-    const buf = Buf.readFrom(log.dev, log.start);
-    defer buf.release();
+fn syncLogFromDisk() void {
+    const buffer = Buffer.readFrom(log.dev, log.start);
+    defer buffer.release();
 
     const log_header = @as(
         [*]u8,
         @ptrCast(&log.header),
     )[0..@sizeOf(@TypeOf(log.header))];
-    misc.memMove(log_header, &buf.data, log_header.len);
+    misc.memMove(log_header, &buffer.data, log_header.len);
 }
 
 /// Write in-memory log header to disk.
 /// This is the true point at which the
 /// current transaction commits.
-fn writeHead() void {
-    const buf = Buf.readFrom(log.dev, log.start);
+fn syncLogToDisk() void {
+    const buf = Buffer.readFrom(log.dev, log.start);
     defer buf.release();
 
     const log_header = @as(
@@ -115,11 +114,12 @@ fn writeHead() void {
     buf.writeBack();
 }
 
-fn recoverFromLog() void {
-    readHead();
-    installTrans(true); // if committed, copy from log to disk
+fn tryRecover() void {
+    syncLogFromDisk();
+    defer syncLogToDisk(); // clear the log
+
+    installTransaction(true); // if committed, copy from log to disk
     log.header.n = 0;
-    writeHead(); // clear the log
 }
 
 /// called at the start of each FS syscall
@@ -174,12 +174,12 @@ pub fn endOp() void {
 }
 
 /// Copy modified blocks from cache to log.
-fn writeLog() void {
+fn syncChangesToLog() void {
     var tail: u32 = 0;
     while (tail < log.header.n) : (tail += 1) {
-        const to = Buf.readFrom(log.dev, log.start + tail + 1);
+        const to = Buffer.readFrom(log.dev, log.start + tail + 1);
         defer to.release();
-        const from = Buf.readFrom(
+        const from = Buffer.readFrom(
             log.dev,
             log.header.block[tail],
         );
@@ -193,23 +193,23 @@ fn writeLog() void {
 fn commit() void {
     if (log.header.n == 0) return;
 
-    writeLog(); // write modified blocks from cache to log
-    writeHead(); // write header to disk -- the real commit
-    installTrans(false); // now install writes to home locations
+    syncChangesToLog(); // write modified blocks from cache to log
+    syncLogToDisk(); // write header to disk -- the real commit
+    installTransaction(false); // now install writes to home locations
     log.header.n = 0;
-    writeHead(); // erase the transcation from the log
+    syncLogToDisk(); // erase the transcation from the log
 }
 
 /// Caller has modified b->data and is done with the buffer.
 /// Record the block number and pin in the cache by increasing refcnt.
 /// commit()/writeLog() will do the disk write.
-/// 
+///
 /// log.write() replaces Buf.writeBack(); a typical use is:
 ///   bp = bread(...)
 ///   modify bp->data[]
 ///   log_write(bp)
 ///   brelse(bp)
-pub fn write(buf: *Buf) void {
+pub fn write(buf: *Buffer) void {
     log.lock.acquire();
     defer log.lock.release();
 

@@ -2,13 +2,13 @@ const SleepLock = @import("../lock/SleepLock.zig");
 const param = @import("../param.zig");
 const assert = @import("../printf.zig").assert;
 const printf = @import("../printf.zig").printf;
-const Buf = @import("Buf.zig");
+const Buffer = @import("Buffer.zig");
 const DiskInode = @import("dinode.zig").DiskInode;
 const log = @import("log.zig");
 const SuperBlock = @import("SuperBlock.zig").SuperBlock;
 
 pub const root_ino = 1; // root i-number
-pub const block_size = 1024; // block size
+pub const block_size = 1024;
 
 pub const magic = 0x10203040;
 
@@ -54,22 +54,22 @@ pub fn init(dev: u32) void {
 /// Zero a block
 pub const block = struct {
     fn zero(dev: u32, blockno: u32) void {
-        const buf = Buf.readFrom(dev, blockno);
-        defer buf.release();
+        const buffer = Buffer.readFrom(dev, blockno);
+        defer buffer.release();
 
-        @memset(&buf.data, 0);
-        log.write(buf);
+        @memset(&buffer.data, 0);
+        log.write(buffer);
     }
 
     /// Allocate a zeroed disk block, return null if out of disk space.
     /// Also mark the relevant bit in bitmap to 1.
     pub fn alloc(dev: u32) ?u32 {
-        var buf: *Buf = undefined;
+        var buffer: *Buffer = undefined;
         var blockno: u32 = 0;
         while (blockno < super_block.size) : ({
             blockno += bitmap_bits_per_block;
         }) {
-            buf = Buf.readFrom(
+            buffer = Buffer.readFrom(
                 dev,
                 super_block.getBitmapBlockNo(blockno),
             );
@@ -80,17 +80,17 @@ pub const block = struct {
                 bitmap_offset += 1;
             }) {
                 const mask: u8 = @as(u8, 1) << @intCast(bitmap_offset % 8);
-                const block_in_use_ptr = &buf.data[bitmap_offset / 8];
-                if (block_in_use_ptr.* & mask == 0) { // Is block free?
-                    block_in_use_ptr.* |= mask; // Mark block in use.
-                    log.write(buf);
-                    buf.release();
+                const block_in_use = &buffer.data[bitmap_offset / 8];
+                if (block_in_use.* & mask == 0) { // Is block free?
+                    block_in_use.* |= mask; // Mark block in use.
+                    log.write(buffer);
+                    buffer.release();
                     zero(dev, blockno + bitmap_offset);
                     return blockno + bitmap_offset;
                 }
             }
 
-            buf.release();
+            buffer.release();
         }
         return null;
     }
@@ -98,17 +98,17 @@ pub const block = struct {
     /// Free a disk block.
     /// Also mark the relevant bit in bitmap to 0.
     pub fn free(dev: u32, blockno: u32) void {
-        const buf = Buf.readFrom(
+        const buffer = Buffer.readFrom(
             dev,
             super_block.getBitmapBlockNo(blockno),
         );
-        defer buf.release();
+        defer buffer.release();
 
         const bitmap_offset = blockno % bitmap_bits_per_block;
         const mask: u8 = @as(u8, 1) << @intCast(bitmap_offset % 8);
-        const block_in_use_ptr = &buf.data[bitmap_offset / 8];
-        assert(block_in_use_ptr.* & mask != 0, @src());
-        block_in_use_ptr.* &= ~mask;
-        log.write(buf);
+        const block_in_use = &buffer.data[bitmap_offset / 8];
+        assert(block_in_use.* & mask != 0, @src()); // Block should not be freed
+        block_in_use.* &= ~mask; // Mark block free.
+        log.write(buffer);
     }
 };

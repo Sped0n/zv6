@@ -17,9 +17,9 @@ data: [fs.block_size]u8,
 
 const Self = @This();
 
-var bcache = struct {
+var buffer_cache = struct {
     lock: SpinLock,
-    buf: [param.n_buf]Self,
+    buffers: [param.n_buf]Self,
 
     /// Linked list of all buffers, through prev/next.
     /// Sorted by how recently the buffer was used.
@@ -27,7 +27,7 @@ var bcache = struct {
     head: Self,
 }{
     .lock = undefined,
-    .buf = [_]Self{Self{
+    .buffers = [_]Self{Self{
         .valid = false,
         .owned_by_disk = false,
         .dev = 0,
@@ -52,18 +52,17 @@ var bcache = struct {
 };
 
 pub fn init() void {
-    bcache.lock.init("bcache");
+    buffer_cache.lock.init("bcache");
 
     // Create linked list of buffers
-    bcache.head.prev = &bcache.head;
-    bcache.head.next = &bcache.head;
-    for (0..param.n_buf) |i| {
-        const b = &bcache.buf[i];
-        b.next = bcache.head.next;
-        b.prev = &bcache.head;
-        b.lock.init("buffer");
-        bcache.head.next.prev = b;
-        bcache.head.next = b;
+    buffer_cache.head.prev = &buffer_cache.head;
+    buffer_cache.head.next = &buffer_cache.head;
+    for (&buffer_cache.buffers) |*buffer| {
+        buffer.next = buffer_cache.head.next;
+        buffer.prev = &buffer_cache.head;
+        buffer.lock.init("buffer");
+        buffer_cache.head.next.prev = buffer;
+        buffer_cache.head.next = buffer;
     }
 }
 
@@ -71,34 +70,32 @@ pub fn init() void {
 /// If not found, allocate a buffer.
 /// In either case, return locked buffer.
 fn get(dev: u32, blockno: u32) *Self {
-    var buf: *Self = undefined;
+    var buffer: *Self = undefined;
+    defer buffer.lock.acquire();
 
-    bcache.lock.acquire();
-    defer {
-        bcache.lock.release();
-        buf.lock.acquire();
-    }
+    buffer_cache.lock.acquire();
+    defer buffer_cache.lock.release();
 
     // Is the block already cached?
-    buf = bcache.head.next;
-    while (buf != &bcache.head) : (buf = buf.next) {
-        if (!(buf.dev == dev and buf.blockno == blockno)) continue;
+    buffer = buffer_cache.head.next;
+    while (buffer != &buffer_cache.head) : (buffer = buffer.next) {
+        if (buffer.dev != dev or buffer.blockno != blockno) continue;
 
-        buf.refcnt += 1;
-        return buf;
+        buffer.refcnt += 1;
+        return buffer;
     }
 
     // Not cached.
     // Recycle the least recently used (LRU) unused buffer.
-    buf = bcache.head.prev;
-    while (buf != &bcache.head) : (buf = buf.prev) {
-        if (buf.refcnt != 0) continue;
+    buffer = buffer_cache.head.prev;
+    while (buffer != &buffer_cache.head) : (buffer = buffer.prev) {
+        if (buffer.refcnt != 0) continue;
 
-        buf.dev = dev;
-        buf.blockno = blockno;
-        buf.valid = false;
-        buf.refcnt = 1;
-        return buf;
+        buffer.dev = dev;
+        buffer.blockno = blockno;
+        buffer.valid = false;
+        buffer.refcnt = 1;
+        return buffer;
     }
 
     panic(@src(), "no buf available", .{});
@@ -106,12 +103,12 @@ fn get(dev: u32, blockno: u32) *Self {
 
 /// Return a locked buf with the content of the indicated block.
 pub fn readFrom(dev: u32, blockno: u32) *Self {
-    var buf = get(dev, blockno);
-    if (!buf.valid) {
-        virtio_disk.diskReadWrite(buf, false);
-        buf.valid = true;
+    var buffer = get(dev, blockno);
+    if (!buffer.valid) {
+        virtio_disk.diskReadWrite(buffer, false);
+        buffer.valid = true;
     }
-    return buf;
+    return buffer;
 }
 
 /// Write buf's contents to disk. Must be locked.
@@ -135,31 +132,31 @@ pub fn release(self: *Self) void {
 
     self.lock.release();
 
-    bcache.lock.acquire();
-    defer bcache.lock.release();
+    buffer_cache.lock.acquire();
+    defer buffer_cache.lock.release();
 
     self.refcnt -= 1;
     if (self.refcnt == 0) {
         // no one is waiting for it.
         self.next.prev = self.prev;
         self.prev.next = self.next;
-        self.next = bcache.head.next;
-        self.prev = &bcache.head;
-        bcache.head.next.prev = self;
-        bcache.head.next = self;
+        self.next = buffer_cache.head.next;
+        self.prev = &buffer_cache.head;
+        buffer_cache.head.next.prev = self;
+        buffer_cache.head.next = self;
     }
 }
 
 pub fn pin(self: *Self) void {
-    bcache.lock.acquire();
-    defer bcache.lock.release();
+    buffer_cache.lock.acquire();
+    defer buffer_cache.lock.release();
 
     self.refcnt += 1;
 }
 
 pub fn unPin(self: *Self) void {
-    bcache.lock.acquire();
-    defer bcache.lock.release();
+    buffer_cache.lock.acquire();
+    defer buffer_cache.lock.release();
 
     self.refcnt -= 1;
 }
