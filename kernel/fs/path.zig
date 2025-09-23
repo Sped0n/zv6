@@ -7,8 +7,6 @@ const Process = @import("../process/Process.zig");
 const fs = @import("fs.zig");
 const Inode = @import("Inode.zig");
 
-// Paths -----------------------------------------------------------------------
-
 pub const Error = error{
     InodeIsNotDirectory,
     NextLookupFailed,
@@ -26,117 +24,117 @@ pub const Error = error{
 ///   skipElem("a", name) = 1, setting name = "a"
 ///   skipElem("", name) = skipElem("////", name) = null
 ///
-fn skipElem(path: []const u8, curr: usize, name_buffer: []u8) usize {
-    var local_curr: usize = curr;
+fn skipElem(path_remaining: []const u8, name: []u8) ?[]const u8 {
+    var i: usize = 0;
 
     // Skip Leading Slashes
-    while (local_curr < path.len and path[local_curr] == '/') {
-        local_curr += 1;
+    while (i < path_remaining.len and path_remaining[i] == '/') {
+        i += 1;
     }
 
     // Check for Empty Path
-    if (local_curr == path.len) {
-        return 0;
+    if (i == path_remaining.len) {
+        return null;
     }
 
-    const start = local_curr;
+    const start = i;
 
     // Find the End of the Element
-    while (local_curr < path.len and path[local_curr] != '/') {
-        local_curr += 1;
+    while (i < path_remaining.len and path_remaining[i] != '/') {
+        i += 1;
     }
 
-    const len = @min(local_curr - start, fs.dir_size - 1);
+    const elem_len = @min(i - start, fs.dir_size - 1);
 
     // Copy the Element to name
-    misc.memMove(name_buffer.ptr, path[start .. start + len].ptr, len);
-    name_buffer[len] = 0;
+    misc.memMove(name.ptr, path_remaining[start .. start + elem_len].ptr, elem_len);
+    name[elem_len] = 0;
 
     // Skip Trailing Slashes
-    while (local_curr < path.len and path[local_curr] == '/') {
-        local_curr += 1;
+    while (i < path_remaining.len and path_remaining[i] == '/') {
+        i += 1;
     }
 
-    return local_curr;
+    return path_remaining[i..];
 }
 
 /// Look up and return the inode for a path name.
 /// If is_parent == true, return the inode for the parent and copy the final
 /// path element into name, which must have room for dir_sz bytes.
-/// Must be called inside a transaction since it calls iput().
-fn lookup(_path: []const u8, comptime is_parent: bool, name_buffer: []u8) !*Inode {
-    var inode_ptr: *Inode = undefined;
+/// Must be called inside a transaction since it calls inode.put().
+fn lookup(path: []const u8, comptime is_parent: bool, name: []u8) !*Inode {
+    var inode: *Inode = undefined;
 
-    if (_path.len > 0 and _path[0] == '/') {
+    if (path.len > 0 and path[0] == '/') {
         // absolute path
-        inode_ptr = Inode.get(param.root_dev, fs.root_ino);
+        inode = Inode.get(param.root_dev, fs.root_ino);
     } else {
         // relative path
         const curr_proc = Process.current() catch panic(
             @src(),
             "current proc is null, path is {s}",
-            .{_path},
+            .{path},
         );
         if (curr_proc.cwd) |cwd| {
-            inode_ptr = cwd.dup();
+            inode = cwd.dup();
         } else {
             panic(
                 @src(),
                 "current proc(name={s}, pid={d})'s cwd null, path is {s}",
-                .{ curr_proc.name, curr_proc.pid, _path },
+                .{ curr_proc.name, curr_proc.pid, path },
             );
         }
     }
 
+    errdefer inode.put();
+
     var next: *Inode = undefined;
-    var path_offset_after_skip: usize = 0;
-    while (true) : (inode_ptr = next) {
-        path_offset_after_skip = skipElem(
-            _path,
-            path_offset_after_skip,
-            name_buffer,
-        );
-        if (path_offset_after_skip == 0) break; // no more elements to process
+    var path_remaining: []const u8 = path;
+    while (true) : (inode = next) {
+        const after = skipElem(
+            path_remaining,
+            name,
+        ) orelse break;
 
-        inode_ptr.lock();
+        {
+            inode.lock();
+            defer inode.unlock();
 
-        if (inode_ptr.dinode.type != .directory) {
-            inode_ptr.unlockPut();
-            return Error.InodeIsNotDirectory;
+            if (inode.dinode.type != .directory) {
+                return Error.InodeIsNotDirectory;
+            }
+
+            if (is_parent and after.len == 0) {
+                // Stop one level early.
+                return inode;
+            }
+
+            if (inode.dirLookUp(
+                mem.sliceTo(name, 0),
+                null,
+            )) |_inode| {
+                next = _inode;
+            } else {
+                return Error.NextLookupFailed;
+            }
         }
 
-        if (is_parent and path_offset_after_skip == _path.len) {
-            // Stop one level early.
-            inode_ptr.unlock();
-            return inode_ptr;
-        }
-
-        if (inode_ptr.dirLookUp(
-            mem.sliceTo(name_buffer, 0),
-            null,
-        )) |n| {
-            next = n;
-        } else {
-            inode_ptr.unlockPut();
-            return Error.NextLookupFailed;
-        }
-
-        inode_ptr.unlockPut();
+        inode.put();
+        path_remaining = after;
     }
 
     if (is_parent) {
-        inode_ptr.put();
         return Error.TraverseAll;
     }
 
-    return inode_ptr;
+    return inode;
 }
 
 pub fn toInode(path: []const u8) !*Inode {
-    var name_buffer: [fs.dir_size]u8 = [_]u8{0} ** fs.dir_size;
-    return lookup(path, false, &name_buffer);
+    var name: [fs.dir_size]u8 = [_]u8{0} ** fs.dir_size;
+    return lookup(path, false, &name);
 }
 
-pub fn toParentInode(path: []const u8, name_buffer: []u8) !*Inode {
-    return lookup(path, true, name_buffer);
+pub fn toParentInode(path: []const u8, name: []u8) !*Inode {
+    return lookup(path, true, name);
 }
