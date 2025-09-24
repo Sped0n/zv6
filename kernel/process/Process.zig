@@ -105,7 +105,7 @@ pub const Error = error{
 /// Map it high in memory, followed by an invalid
 /// guard page.
 pub fn mapStacks(kpgtbl: riscv.PageTable) !void {
-    for (0..param.n_proc) |i| {
+    for (0..procs.len) |i| {
         const page0 = try kmem.alloc();
         errdefer kmem.free(page0);
         const page1 = try kmem.alloc();
@@ -140,6 +140,8 @@ pub fn mapStacks(kpgtbl: riscv.PageTable) !void {
 
 /// initialize the proc table
 pub fn init() void {
+    // NOTE: don't try to iterate on uninitialized procs
+    // see https://github.com/ziglang/zig/issues/13934
     pid_lock.init("nextpid");
     wait_lock.init("wait_lock");
     for (&procs, 0..) |*proc, i| {
@@ -180,23 +182,25 @@ pub fn allocPid() u32 {
 
 fn create() !*Self {
     var proc: *Self = undefined;
+
     traverse_blk: {
-        for (&procs) |*_proc| {
-            _proc.lock.acquire();
-            if (_proc.state == .unused) {
-                proc = _proc;
+        for (0..param.n_proc) |i| {
+            proc = &procs[i];
+            proc.lock.acquire();
+            if (proc.state == .unused) {
                 break :traverse_blk;
             } else {
-                _proc.lock.release();
+                proc.lock.release();
             }
         }
         return Error.NoProcAvailable;
     }
+
     errdefer proc.lock.release();
+    errdefer proc.free();
 
     proc.pid = allocPid();
     proc.state = .used;
-    errdefer proc.free();
 
     // Allocate a trapframe page.
     proc.trap_frame = @ptrCast(try kmem.alloc());
@@ -242,34 +246,29 @@ fn free(self: *Self) void {
 pub fn createPageTable(self: *Self) !riscv.PageTable {
     // An empty page table.
     const page_table = try vm.uvmCreate();
+    errdefer vm.uvmFree(page_table, 0);
 
     // map the trampoline code (for system call return)
     // at the highest user virtual address.
     // only the supervisor uses it, on the way
     // to/from user space, so not PTE_U.
-    vm.mapPages(
+    try vm.mapPages(
         page_table,
         memlayout.trampoline,
         riscv.pg_size,
         @intFromPtr(trampoline),
         @intFromEnum(riscv.PteFlag.r) | @intFromEnum(riscv.PteFlag.x),
-    ) catch |e| {
-        vm.uvmFree(page_table, 0);
-        return e;
-    };
+    );
 
     // map the trapframe page just below the trampoline page, for
     // trampoline.S.
-    vm.mapPages(
+    try vm.mapPages(
         page_table,
         memlayout.trap_frame,
         riscv.pg_size,
         @intFromPtr(self.trap_frame),
         @intFromEnum(riscv.PteFlag.r) | @intFromEnum(riscv.PteFlag.w),
-    ) catch |e| {
-        vm.uvmFree(page_table, 0);
-        return e;
-    };
+    );
 
     return page_table;
 }
@@ -304,7 +303,7 @@ pub fn userInit() void {
     misc.safeStrCopy(&proc.name, "initcode");
     proc.cwd = path.toInode("/") catch |e| panic(
         @src(),
-        "path.namei failed with {s}",
+        "path.toInode failed with {s}",
         .{@errorName(e)},
     );
 
@@ -360,17 +359,14 @@ pub fn fork() !u32 {
         // Allocate process.
         new_proc = try create();
         defer new_proc.lock.release();
+        errdefer new_proc.free();
 
         // Copy user memory from parent to child.
-        vm.uvmCopy(
+        try vm.uvmCopy(
             proc.page_table.?,
             new_proc.page_table.?,
             proc.size,
-        ) catch |e| {
-            free(new_proc);
-            new_proc.lock.release();
-            return e;
-        };
+        );
         new_proc.size = proc.size;
 
         // Copy saved user register.
@@ -587,11 +583,8 @@ pub fn sleep(chan_addr: u64, lock: *SpinLock) void {
 
     proc.lock.acquire(); // DOC: sleeplock 1
     lock.release();
-    defer {
-        // Reacquire original lock.
-        proc.lock.release();
-        lock.acquire();
-    }
+    defer lock.acquire();
+    defer proc.lock.release();
 
     // Go to sleep.
     proc.chan_addr = chan_addr;
@@ -705,8 +698,8 @@ pub fn eitherCopyIn(dst: [*]u8, is_user_src: bool, src_addr: u64, len: u64) !voi
 /// No lock to avoid wedging a stuck machine further.
 pub fn dump() void {
     printf("\n", .{});
-    for (procs) |proc| {
+    for (&procs) |*proc| {
         if (proc.state == .unused) continue;
-        printf("{d: <7} {s: ^10} {s}\n", .{ proc.pid, @tagName(proc.state), proc.name });
+        printf("{d: <7} {s: ^10} {s}\n", .{ proc.pid, @tagName(proc.state), &proc.name });
     }
 }
