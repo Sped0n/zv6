@@ -71,23 +71,42 @@ pub fn fetchStr(addr: u64, dst: []u8) !void {
     );
 }
 
-/// Fetch the system call argument, return it as T
+/// Fetch the system call argument n and return it as T (i32/u32/i64/u64, etc.).
 pub fn argRaw(comptime T: type, n: usize) T {
-    @setRuntimeSafety(false);
-    const proc = Process.current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
+    const proc = Process.current() catch panic(@src(), "current proc is null", .{});
     const trap_frame = proc.trap_frame.?;
-    switch (n) {
-        0 => return @intCast(trap_frame.a0),
-        1 => return @intCast(trap_frame.a1),
-        2 => return @intCast(trap_frame.a2),
-        3 => return @intCast(trap_frame.a3),
-        4 => return @intCast(trap_frame.a4),
-        5 => return @intCast(trap_frame.a5),
-        else => panic(@src(), "unknown id({d})", .{n}),
+
+    const raw: u64 = switch (n) {
+        0 => trap_frame.a0,
+        1 => trap_frame.a1,
+        2 => trap_frame.a2,
+        3 => trap_frame.a3,
+        4 => trap_frame.a4,
+        5 => trap_frame.a5,
+        else => panic(@src(), "unknown arg index {d}", .{n}),
+    };
+
+    // T must be an integer type up to 64 bits
+    comptime {
+        const info = @typeInfo(T);
+        if (info != .int) @compileError("argRaw(T,n): T must be an integer type");
+        if (info.int.bits > 64) @compileError("argRaw(T,n): T wider than 64 bits");
+    }
+
+    const int_info = @typeInfo(T).int;
+
+    if (int_info.bits == 64) {
+        if (int_info.signedness == .signed) {
+            return @bitCast(raw); // u64 -> i64
+        } else {
+            return raw; // u64 -> u64
+        }
+    } else {
+        if (int_info.signedness == .signed) {
+            return @truncate(@as(i64, @bitCast(raw))); // u64 -> i64 -> i32
+        } else {
+            return @truncate(raw); // u64 -> u32
+        }
     }
 }
 
@@ -106,49 +125,49 @@ pub fn syscall() !void {
     );
     const trap_frame = proc.trap_frame.?;
 
-    const a7 = trap_frame.a7;
-    const a0 = &trap_frame.a0;
+    errdefer trap_frame.a0 = @bitCast(@as(i64, -1));
+
     const syscall_id = meta.intToEnum(
         SysCallID,
-        a7,
-    ) catch {
+        trap_frame.a7,
+    ) catch |e| {
         printf(
             "{d} {s}: unknown syscall ID {d}\n",
             .{ proc.pid, proc.name, trap_frame.a7 },
         );
-        @as(*i64, @ptrCast(a0)).* = -1;
-        return;
+        return e;
     };
 
-    errdefer @as(*i64, @ptrCast(a0)).* = -1;
     // errdefer |e| printf(
     //     "\nsyscall({s}) failed with {s}\n",
     //     .{ std.enums.tagName(SysCallID, syscall_id) orelse "null", @errorName(e) },
     // );
 
+    var tmp: u64 = 0;
     switch (syscall_id) {
-        .fork => a0.* = try sysproc.fork(),
-        .exit => a0.* = sysproc.exit(),
-        .wait => a0.* = try sysproc.wait(),
-        .pipe => a0.* = try sysfile.pipe(),
-        .read => a0.* = try sysfile.read(),
-        .kill => a0.* = try sysproc.kill(),
-        .exec => a0.* = try sysfile.exec(),
-        .fstat => a0.* = try sysfile.fileStat(),
-        .chdir => a0.* = try sysfile.chdir(),
-        .dup => a0.* = try sysfile.dup(),
-        .getpid => a0.* = try sysproc.getPid(),
-        .sbrk => a0.* = try sysproc.sbrk(),
-        .sleep => a0.* = try sysproc.sleep(),
-        .uptime => a0.* = sysproc.uptime(),
-        .open => a0.* = try sysfile.open(),
-        .write => a0.* = try sysfile.write(),
-        .mknod => a0.* = try sysfile.mknod(),
-        .unlink => a0.* = try sysfile.unlink(),
-        .link => a0.* = try sysfile.link(),
-        .mkdir => a0.* = try sysfile.mkdir(),
-        .close => a0.* = try sysfile.close(),
+        .fork => tmp = try sysproc.fork(),
+        .exit => tmp = sysproc.exit(),
+        .wait => tmp = try sysproc.wait(),
+        .pipe => tmp = try sysfile.pipe(),
+        .read => tmp = try sysfile.read(),
+        .kill => tmp = try sysproc.kill(),
+        .exec => tmp = try sysfile.exec(),
+        .fstat => tmp = try sysfile.fileStat(),
+        .chdir => tmp = try sysfile.chdir(),
+        .dup => tmp = try sysfile.dup(),
+        .getpid => tmp = try sysproc.getPid(),
+        .sbrk => tmp = try sysproc.sbrk(),
+        .sleep => tmp = try sysproc.sleep(),
+        .uptime => tmp = sysproc.uptime(),
+        .open => tmp = try sysfile.open(),
+        .write => tmp = try sysfile.write(),
+        .mknod => tmp = try sysfile.mknod(),
+        .unlink => tmp = try sysfile.unlink(),
+        .link => tmp = try sysfile.link(),
+        .mkdir => tmp = try sysfile.mkdir(),
+        .close => tmp = try sysfile.close(),
     }
+    trap_frame.a0 = tmp;
 
     return;
 }
