@@ -256,7 +256,7 @@ pub fn exec(_path: []const u8, argv: []?kmem.Page) !u64 {
     );
 
     // a1 = argv for user main(argc, argv)
-    proc.trap_frame.a1 = sp;
+    proc.trap_frame.?.a1 = sp;
 
     // Save program name for debugging.
     var program_name: []const u8 = undefined;
@@ -271,8 +271,8 @@ pub fn exec(_path: []const u8, argv: []?kmem.Page) !u64 {
     const old_page_table = proc.page_table.?;
     proc.page_table = new_page_table; // becomes the process's page table
     proc.size = size;
-    proc.trap_frame.epc = elf_hdr.entry;
-    proc.trap_frame.sp = sp;
+    proc.trap_frame.?.epc = elf_hdr.entry;
+    proc.trap_frame.?.sp = sp;
 
     // Free old page table.
     Process.freePageTable(old_page_table, old_size);

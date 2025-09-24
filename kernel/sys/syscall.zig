@@ -79,13 +79,14 @@ pub fn argRaw(comptime T: type, n: usize) T {
         "current proc is null",
         .{},
     );
+    const trap_frame = proc.trap_frame.?;
     switch (n) {
-        0 => return @intCast(proc.trap_frame.a0),
-        1 => return @intCast(proc.trap_frame.a1),
-        2 => return @intCast(proc.trap_frame.a2),
-        3 => return @intCast(proc.trap_frame.a3),
-        4 => return @intCast(proc.trap_frame.a4),
-        5 => return @intCast(proc.trap_frame.a5),
+        0 => return @intCast(trap_frame.a0),
+        1 => return @intCast(trap_frame.a1),
+        2 => return @intCast(trap_frame.a2),
+        3 => return @intCast(trap_frame.a3),
+        4 => return @intCast(trap_frame.a4),
+        5 => return @intCast(trap_frame.a5),
         else => panic(@src(), "unknown id({d})", .{n}),
     }
 }
@@ -103,16 +104,17 @@ pub fn syscall() !void {
         "current proc is null",
         .{},
     );
+    const trap_frame = proc.trap_frame.?;
 
-    const a7 = proc.trap_frame.a7;
-    const a0 = &proc.trap_frame.a0;
+    const a7 = trap_frame.a7;
+    const a0 = &trap_frame.a0;
     const syscall_id = meta.intToEnum(
         SysCallID,
         a7,
     ) catch {
         printf(
             "{d} {s}: unknown syscall ID {d}\n",
-            .{ proc.pid, proc.name, proc.trap_frame.a7 },
+            .{ proc.pid, proc.name, trap_frame.a7 },
         );
         @as(*i64, @ptrCast(a0)).* = -1;
         return;

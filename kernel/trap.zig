@@ -49,7 +49,7 @@ pub fn userTrap() callconv(.c) void {
         "current proc is null",
         .{},
     );
-    const trap_frame = proc.trap_frame;
+    const trap_frame = proc.trap_frame.?;
 
     // save user program counter
     trap_frame.epc = riscv.sepc.read();
@@ -113,7 +113,7 @@ pub fn userTrapRet() callconv(.c) void {
 
     // set up trapframe values that uservec will need when
     // the process next traps into the kernel.
-    const trap_frame = proc.trap_frame;
+    const trap_frame = proc.trap_frame.?;
     trap_frame.kernel_satp = riscv.satp.read(); // kernel page table
     trap_frame.kernel_sp = proc.kstack + 2 * riscv.pg_size; // process's kernel stack
     trap_frame.kernel_trap = @intFromPtr(&userTrap);

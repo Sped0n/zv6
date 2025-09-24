@@ -57,7 +57,7 @@ parent: ?*Self, // Parent process
 kstack: u64, // Virtual address of kernel stack
 size: u64, // Size of process memory (bytes)
 page_table: ?riscv.PageTable, // User page table
-trap_frame: *TrapFrame, // data page for trampoline.S
+trap_frame: ?*TrapFrame, // data page for trampoline.S
 context: Context, // swtch() here to run process
 ofiles: [param.n_ofile]?*File, // Open files
 cwd: ?*Inode, // Current directory
@@ -74,7 +74,7 @@ pub var procs: [param.n_proc]Self = [_]Self{Self{
     .kstack = 0,
     .size = 0,
     .page_table = null,
-    .trap_frame = undefined,
+    .trap_frame = null,
     .context = undefined,
     .ofiles = undefined,
     .cwd = null,
@@ -224,8 +224,9 @@ fn create() !*Self {
 /// including user pages.
 /// p->lock must be held.
 fn free(self: *Self) void {
-    kmem.free(@ptrCast(@alignCast(self.trap_frame)));
-    self.trap_frame = undefined;
+    if (self.trap_frame) |trap_frame|
+        kmem.free(@ptrCast(@alignCast(trap_frame)));
+    self.trap_frame = null;
 
     if (self.page_table) |page_table|
         freePageTable(page_table, self.size);
@@ -288,17 +289,20 @@ pub fn userInit() void {
         "Process.create failed with {s}",
         .{@errorName(e)},
     );
-    assert(proc.page_table != null, @src());
     init_proc = proc;
+
+    // non nullable ensured by create()
+    const page_table = proc.page_table.?;
+    var trap_frame = proc.trap_frame.?;
 
     // allocate one user page and copy initcode's instructions
     // and data into it.
-    vm.uvmFirst(proc.page_table.?, initcode);
+    vm.uvmFirst(page_table, initcode);
     proc.size = riscv.pg_size;
 
     // prepare for the very first "return" from kernel to user.
-    proc.trap_frame.epc = 0; // user program counter
-    proc.trap_frame.sp = riscv.pg_size; // user stack pointer
+    trap_frame.epc = 0; // user program counter
+    trap_frame.sp = riscv.pg_size; // user stack pointer
 
     misc.safeStrCopy(&proc.name, "initcode");
     proc.cwd = path.toInode("/") catch |e| panic(
@@ -370,10 +374,10 @@ pub fn fork() !u32 {
         new_proc.size = proc.size;
 
         // Copy saved user register.
-        new_proc.trap_frame.* = proc.trap_frame.*;
+        new_proc.trap_frame.?.* = proc.trap_frame.?.*;
 
         // Cause fork to return 0 in the child.
-        new_proc.trap_frame.a0 = 0;
+        new_proc.trap_frame.?.a0 = 0;
 
         // Increment reference counts on open file descriptors.
         for (0..param.n_ofile) |i| {
