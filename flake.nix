@@ -34,6 +34,7 @@
                 ]
               ))
               perl
+              pkgsCross.riscv64-embedded.buildPackages.binutilsNoLibc # for riscv64-none-elf-objdump
             ];
             shellHook = with pkgs; ''
               SOURCE_DATE_EPOCH=$(date +%s)
