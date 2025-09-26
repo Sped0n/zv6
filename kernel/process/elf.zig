@@ -121,8 +121,8 @@ pub fn exec(_path: []const u8, argv: []?kmem.Page) !u64 {
     // FS scope: begin journaled op, open + lock inode, read ELF, create page table,
     // load segments, and then release inode and end log.
     {
-        fs.log.batch.begin();
-        defer fs.log.batch.end();
+        fs.journal.batch.begin();
+        defer fs.journal.batch.end();
 
         var inode = try fs.path.toInode(_path);
         inode.lock();

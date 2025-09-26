@@ -440,8 +440,8 @@ pub fn exit(status: i32) void {
     }
 
     {
-        fs.log.batch.begin();
-        defer fs.log.batch.end();
+        fs.journal.batch.begin();
+        defer fs.journal.batch.end();
 
         proc.cwd.?.put();
     }

@@ -34,10 +34,9 @@ const fs = @import("fs.zig");
 const Header = extern struct {
     n: u32, // number of blocks
     block: [param.log_size]u32, // disk block numbers
-
 };
 
-var log = struct {
+var journal = struct {
     lock: SpinLock,
     start: u32,
     size: u32,
@@ -61,77 +60,83 @@ var log = struct {
 pub fn init(dev: u32, super_block: *fs.SuperBlock) void {
     assert(@sizeOf(Header) < fs.block_size, @src());
 
-    log.lock.init("log");
-    log.start = super_block.log_start;
-    log.size = super_block.n_log;
-    log.dev = dev;
+    journal.lock.init("journal");
+    journal.start = super_block.log_start;
+    journal.size = super_block.n_log;
+    journal.dev = dev;
     tryRecover();
 }
 
 /// Copy committed blocks from log to their home location
 fn installTransaction(try_recover: bool) void {
     var tail: u32 = 0;
-    while (tail < log.header.n) : (tail += 1) {
-        const log_buffer = fs.Buffer.readFrom(log.dev, log.start + tail + 1);
-        const disk_buffer = fs.Buffer.readFrom(log.dev, log.header.block[tail]);
+    while (tail < journal.header.n) : (tail += 1) {
+        const journal_buffer = fs.Buffer.readFrom(
+            journal.dev,
+            journal.start + tail + 1,
+        );
+        const disk_buffer = fs.Buffer.readFrom(
+            journal.dev,
+            journal.header.block[tail],
+        );
         defer disk_buffer.release();
-        defer log_buffer.release();
+        defer journal_buffer.release();
 
-        utils.memMove(&disk_buffer.data, &log_buffer.data, fs.block_size);
+        utils.memMove(&disk_buffer.data, &journal_buffer.data, fs.block_size);
         disk_buffer.writeBack();
         if (!try_recover) disk_buffer.unPin();
     }
 }
 
-/// Read the log header from disk into the in-memory log header
-fn syncLogFromDisk() void {
-    const buffer = fs.Buffer.readFrom(log.dev, log.start);
+/// Read the journal header from disk into the in-memory log header
+fn syncJournalFromDisk() void {
+    const buffer = fs.Buffer.readFrom(journal.dev, journal.start);
     defer buffer.release();
 
-    const log_header = @as(
+    const journal_header = @as(
         [*]u8,
-        @ptrCast(&log.header),
-    )[0..@sizeOf(@TypeOf(log.header))];
-    utils.memMove(log_header, &buffer.data, log_header.len);
+        @ptrCast(&journal.header),
+    )[0..@sizeOf(@TypeOf(journal.header))];
+    utils.memMove(journal_header, &buffer.data, journal_header.len);
 }
 
 /// Write in-memory log header to disk.
 /// This is the true point at which the
 /// current transaction commits.
-fn syncLogToDisk() void {
-    const buf = fs.Buffer.readFrom(log.dev, log.start);
-    defer buf.release();
+fn syncJournalToDisk() void {
+    const buffer = fs.Buffer.readFrom(journal.dev, journal.start);
+    defer buffer.release();
 
-    const log_header = @as(
+    const journal_header = @as(
         [*]u8,
-        @ptrCast(&log.header),
-    )[0..@sizeOf(@TypeOf(log.header))];
-    utils.memMove(&buf.data, log_header, log_header.len);
+        @ptrCast(&journal.header),
+    )[0..@sizeOf(@TypeOf(journal.header))];
+    utils.memMove(&buffer.data, journal_header, journal_header.len);
 
-    buf.writeBack();
+    buffer.writeBack();
 }
 
 fn tryRecover() void {
-    syncLogFromDisk();
-    defer syncLogToDisk(); // clear the log
+    syncJournalFromDisk();
+    defer syncJournalToDisk(); // clear the log
 
     installTransaction(true); // if committed, copy from log to disk
-    log.header.n = 0;
+    journal.header.n = 0;
 }
 
 pub const batch = struct {
     /// called at the start of each FS syscall
     pub fn begin() void {
-        log.lock.acquire();
+        journal.lock.acquire();
         while (true) {
-            if (log.committing) {
-                Process.sleep(@intFromPtr(&log), &log.lock);
-            } else if (log.header.n + (log.outstanding + 1) * param.max_opblocks > param.log_size) {
+            if (journal.committing) {
+                Process.sleep(@intFromPtr(&journal), &journal.lock);
+            } else if (journal.header.n + (journal.outstanding + 1) * param.max_opblocks > param.log_size) {
                 // this op might exhaust log space; wait for commit.
-                Process.sleep(@intFromPtr(&log), &log.lock);
+                Process.sleep(@intFromPtr(&journal), &journal.lock);
             } else {
-                log.outstanding += 1;
-                log.lock.release();
+                journal.outstanding += 1;
+                journal.lock.release();
                 break;
             }
         }
@@ -143,20 +148,20 @@ pub const batch = struct {
         var do_commit = false;
 
         {
-            log.lock.acquire();
-            defer log.lock.release();
+            journal.lock.acquire();
+            defer journal.lock.release();
 
-            log.outstanding -= 1;
-            assert(!log.committing, @src());
+            journal.outstanding -= 1;
+            assert(!journal.committing, @src());
 
-            if (log.outstanding == 0) {
+            if (journal.outstanding == 0) {
                 do_commit = true;
-                log.committing = true;
+                journal.committing = true;
             } else {
                 // begin_op() may be waiting for log space,
                 // and decrementing log.outstanding has decreased
                 // the amount of reserved space.
-                Process.wakeUp(@intFromPtr(&log));
+                Process.wakeUp(@intFromPtr(&journal));
             }
         }
 
@@ -164,23 +169,26 @@ pub const batch = struct {
             // call commit w/o holding locks, since not allowed
             // to sleep with locks.
             commit();
-            log.lock.acquire();
-            defer log.lock.release();
-            log.committing = false;
-            Process.wakeUp(@intFromPtr(&log));
+            journal.lock.acquire();
+            defer journal.lock.release();
+            journal.committing = false;
+            Process.wakeUp(@intFromPtr(&journal));
         }
     }
 };
 
 /// Copy modified blocks from cache to log.
-fn syncChangesToLog() void {
+fn syncChangesToJournal() void {
     var tail: u32 = 0;
-    while (tail < log.header.n) : (tail += 1) {
-        const to = fs.Buffer.readFrom(log.dev, log.start + tail + 1);
+    while (tail < journal.header.n) : (tail += 1) {
+        const to = fs.Buffer.readFrom(
+            journal.dev,
+            journal.start + tail + 1,
+        );
         defer to.release();
         const from = fs.Buffer.readFrom(
-            log.dev,
-            log.header.block[tail],
+            journal.dev,
+            journal.header.block[tail],
         );
         defer from.release();
 
@@ -190,13 +198,13 @@ fn syncChangesToLog() void {
 }
 
 fn commit() void {
-    if (log.header.n == 0) return;
+    if (journal.header.n == 0) return;
 
-    syncChangesToLog(); // write modified blocks from cache to log
-    syncLogToDisk(); // write header to disk -- the real commit
+    syncChangesToJournal(); // write modified blocks from cache to log
+    syncJournalToDisk(); // write header to disk -- the real commit
     installTransaction(false); // now install writes to home locations
-    log.header.n = 0;
-    syncLogToDisk(); // erase the transcation from the log
+    journal.header.n = 0;
+    syncJournalToDisk(); // erase the transcation from the log
 }
 
 /// Caller has modified b->data and is done with the buffer.
@@ -209,21 +217,21 @@ fn commit() void {
 ///   log_write(bp)
 ///   brelse(bp)
 pub fn write(buf: *fs.Buffer) void {
-    log.lock.acquire();
-    defer log.lock.release();
+    journal.lock.acquire();
+    defer journal.lock.release();
 
-    if (log.header.n >= @min(param.log_size, log.size - 1))
-        panic(@src(), "too big a transcation({d})", .{log.header.n});
-    if (log.outstanding == 0)
+    if (journal.header.n >= @min(param.log_size, journal.size - 1))
+        panic(@src(), "too big a transcation({d})", .{journal.header.n});
+    if (journal.outstanding == 0)
         panic(@src(), "outside of transaction", .{});
 
     var i: u32 = 0;
-    while (i < log.header.n) : (i += 1) {
-        if (log.header.block[i] == buf.blockno) break; // log absorption
+    while (i < journal.header.n) : (i += 1) {
+        if (journal.header.block[i] == buf.blockno) break; // log absorption
     }
-    log.header.block[i] = buf.blockno;
-    if (i == log.header.n) { // Add new block to log?
+    journal.header.block[i] = buf.blockno;
+    if (i == journal.header.n) { // Add new block to log?
         buf.pin();
-        log.header.n += 1;
+        journal.header.n += 1;
     }
 }

@@ -7,7 +7,7 @@ pub const DiskInode = @import("dinode.zig").DiskInode;
 pub const File = @import("File.zig");
 pub const Inode = @import("Inode.zig");
 pub const InodeType = @import("dinode.zig").InodeType;
-pub const log = @import("log.zig");
+pub const journal = @import("journal.zig");
 pub const OpenMode = @import("fcntl.zig").OpenMode;
 pub const path = @import("path.zig");
 pub const Pipe = @import("Pipe.zig");
@@ -53,7 +53,7 @@ pub fn init(dev: u32) void {
     super_block.init();
     super_block.read(dev);
     assert(super_block.magic == magic, @src());
-    log.init(dev, &super_block);
+    journal.init(dev, &super_block);
 }
 
 // Blocks ----------------------------------------------------------------------
@@ -65,7 +65,7 @@ pub const block = struct {
         defer buffer.release();
 
         @memset(&buffer.data, 0);
-        log.write(buffer);
+        journal.write(buffer);
     }
 
     /// Allocate a zeroed disk block, return null if out of disk space.
@@ -90,7 +90,7 @@ pub const block = struct {
                 const block_in_use = &buffer.data[bitmap_offset / 8];
                 if (block_in_use.* & mask == 0) { // Is block free?
                     block_in_use.* |= mask; // Mark block in use.
-                    log.write(buffer);
+                    journal.write(buffer);
                     buffer.release();
                     zero(dev, blockno + bitmap_offset);
                     return blockno + bitmap_offset;
@@ -116,6 +116,6 @@ pub const block = struct {
         const block_in_use = &buffer.data[bitmap_offset / 8];
         assert(block_in_use.* & mask != 0, @src()); // Block should not be freed
         block_in_use.* &= ~mask; // Mark block free.
-        log.write(buffer);
+        journal.write(buffer);
     }
 };
