@@ -115,8 +115,8 @@ pub fn close(self: *Self) void {
         },
         .inode, .device => {
             assert(tmp.inode != null, @src());
-            fs.log.batch.begin();
-            defer fs.log.batch.end();
+            fs.journal.batch.begin();
+            defer fs.journal.batch.end();
 
             tmp.inode.?.put();
         },
@@ -238,8 +238,8 @@ pub fn write(self: *Self, user_virt_addr: u64, len: u32) !u32 {
                     const rest = @min(max, len - i);
 
                     {
-                        fs.log.batch.begin();
-                        defer fs.log.batch.end();
+                        fs.journal.batch.begin();
+                        defer fs.journal.batch.end();
 
                         inode.lock();
                         defer inode.unlock();

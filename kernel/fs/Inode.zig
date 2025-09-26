@@ -184,7 +184,7 @@ pub fn alloc(dev: u32, _type: fs.InodeType) ?*Self {
                 0,
             );
             disk_inode.type = _type;
-            fs.log.write(buffer); // mark it allocated on the disk
+            fs.journal.write(buffer); // mark it allocated on the disk
             return get(dev, @intCast(inum));
         }
     }
@@ -207,7 +207,7 @@ pub fn update(self: *Self) void {
         @ptrCast(&buffer.data),
     )[self.inum % fs.inodes_per_block];
     disk_inode.* = self.dinode;
-    fs.log.write(buffer);
+    fs.journal.write(buffer);
 }
 
 /// Increment reference count for *Inode.
@@ -334,7 +334,7 @@ fn bmap(self: *Self, blockno: u32) ?u32 {
         if (addr == 0) {
             addr = fs.block.alloc(self.dev) orelse return null;
             buffer_data[_blockno] = addr;
-            fs.log.write(buffer);
+            fs.journal.write(buffer);
         }
 
         return addr;
@@ -492,7 +492,7 @@ pub fn write(
             src_anchor,
             step,
         );
-        fs.log.write(buffer);
+        fs.journal.write(buffer);
     }
 
     return n_write;
