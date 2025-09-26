@@ -99,8 +99,8 @@ pub fn link() !u64 {
     const new_path_slice =
         try sysutils.copyUserCStringFromArgument(1, &new_path_buffer);
 
-    fs.log.batch.begin();
-    defer fs.log.batch.end();
+    fs.journal.batch.begin();
+    defer fs.journal.batch.end();
 
     // Resolve old path to inode.
     const inode = try fs.path.toInode(old_path_slice);
@@ -178,8 +178,8 @@ pub fn unlink() !u64 {
 
     var name: [fs.dir_size]u8 = undefined;
 
-    fs.log.batch.begin();
-    defer fs.log.batch.end();
+    fs.journal.batch.begin();
+    defer fs.journal.batch.end();
 
     var inode: *fs.Inode = undefined;
 
@@ -323,8 +323,8 @@ pub fn open() !u64 {
         try sysutils.copyUserCStringFromArgument(0, &path_buffer);
     const omode: u64 = sysutils.syscallArgument(u64, 1);
 
-    fs.log.batch.begin();
-    defer fs.log.batch.end();
+    fs.journal.batch.begin();
+    defer fs.journal.batch.end();
 
     var inode: *fs.Inode = undefined;
     if (omode & @intFromEnum(fs.OpenMode.create) != 0) {
@@ -380,8 +380,8 @@ pub fn mkdir() !u64 {
     const path_slice =
         try sysutils.copyUserCStringFromArgument(0, &path_buffer);
 
-    fs.log.batch.begin();
-    defer fs.log.batch.end();
+    fs.journal.batch.begin();
+    defer fs.journal.batch.end();
 
     const inode = try create(path_slice, .directory, 0, 0);
     inode.unlockPut();
@@ -395,8 +395,8 @@ pub fn mknod() !u64 {
     const major: u16 = sysutils.syscallArgument(u16, 1);
     const minor: u16 = sysutils.syscallArgument(u16, 2);
 
-    fs.log.batch.begin();
-    defer fs.log.batch.end();
+    fs.journal.batch.begin();
+    defer fs.journal.batch.end();
 
     const inode = try create(
         path_slice,
@@ -419,8 +419,8 @@ pub fn chdir() !u64 {
     var inode: *fs.Inode = undefined;
 
     {
-        fs.log.batch.begin();
-        defer fs.log.batch.end();
+        fs.journal.batch.begin();
+        defer fs.journal.batch.end();
 
         inode = try fs.path.toInode(path_slice);
 
