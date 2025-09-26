@@ -13,7 +13,7 @@ pub fn init() void {
     ).* = 1;
 }
 
-pub fn initHart() void {
+pub fn initHardwareThread() void {
     const hart = Cpu.id();
 
     // set enable bits for this hart's S-mode

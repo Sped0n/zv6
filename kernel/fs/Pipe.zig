@@ -4,7 +4,7 @@ const vm = @import("../memory/vm.zig");
 const panic = @import("../printf.zig").panic;
 const assert = @import("../printf.zig").assert;
 const Process = @import("../process/Process.zig");
-const File = @import("File.zig");
+const fs = @import("fs.zig");
 
 const pipe_size = 512;
 
@@ -22,10 +22,10 @@ pub const Error = error{
     ProcIsKilled,
 };
 
-pub fn alloc(file_0: **File, file_1: **File) !void {
-    file_0.* = try File.alloc();
+pub fn alloc(file_0: **fs.File, file_1: **fs.File) !void {
+    file_0.* = try fs.File.alloc();
     errdefer file_0.*.close();
-    file_1.* = try File.alloc();
+    file_1.* = try fs.File.alloc();
     errdefer file_1.*.close();
 
     const pipe: *Self = @ptrCast(try kmem.alloc());
@@ -89,7 +89,7 @@ pub fn write(self: *Self, virt_addr: u64, len: u32) !u32 {
         } else {
             assert(proc.page_table != null, @src());
             var char: u8 = 0;
-            vm.copyIn(
+            vm.kvm.copyFromUser(
                 proc.page_table.?,
                 @ptrCast(&char),
                 virt_addr + i,
@@ -130,7 +130,7 @@ pub fn read(self: *Self, virt_addr: u64, len: u32) !u32 {
         assert(proc.page_table != null, @src());
         const char = self.data[self.n_read % pipe_size];
         self.n_read += 1;
-        vm.copyOut(
+        vm.uvm.copyFromKernel(
             proc.page_table.?,
             virt_addr + i,
             @ptrCast(&char),

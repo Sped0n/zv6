@@ -1,15 +1,13 @@
 const std = @import("std");
 const mem = std.mem;
 
-const Inode = @import("../fs/Inode.zig");
-const log = @import("../fs/log.zig");
-const path = @import("../fs/path.zig");
+const fs = @import("../fs/fs.zig");
 const kmem = @import("../memory/kmem.zig");
 const vm = @import("../memory/vm.zig");
-const misc = @import("../misc.zig");
 const param = @import("../param.zig");
 const panic = @import("../printf.zig").panic;
 const riscv = @import("../riscv.zig");
+const utils = @import("../utils.zig");
 const Process = @import("Process.zig");
 
 const elf_magic = 0x464C457F;
@@ -69,7 +67,7 @@ pub const Error = error{
 fn loadSegment(
     page_table: riscv.PageTable,
     virt_addr: u64,
-    inode: *Inode,
+    inode: *fs.Inode,
     offset: u32,
     size: u32,
 ) !void {
@@ -123,10 +121,10 @@ pub fn exec(_path: []const u8, argv: []?kmem.Page) !u64 {
     // FS scope: begin journaled op, open + lock inode, read ELF, create page table,
     // load segments, and then release inode and end log.
     {
-        log.beginOp();
-        defer log.endOp();
+        fs.log.batch.begin();
+        defer fs.log.batch.end();
 
-        var inode = try path.toInode(_path);
+        var inode = try fs.path.toInode(_path);
         inode.lock();
         defer inode.unlockPut();
 
@@ -174,7 +172,7 @@ pub fn exec(_path: []const u8, argv: []?kmem.Page) !u64 {
                 return Error.AddressNotAligned;
 
             // Allocate address range for this segment.
-            size = try vm.uvmMalloc(
+            size = try vm.uvm.malloc(
                 new_page_table.?,
                 size,
                 header.virt_addr + header.mem_size,
@@ -204,7 +202,7 @@ pub fn exec(_path: []const u8, argv: []?kmem.Page) !u64 {
     size = riscv.pgRoundUp(size);
     const stack_bytes = (param.user_stack + 1) // +1 guard page
         * riscv.pg_size;
-    size = try vm.uvmMalloc(
+    size = try vm.uvm.malloc(
         new_page_table.?,
         size,
         size + stack_bytes,
@@ -212,7 +210,7 @@ pub fn exec(_path: []const u8, argv: []?kmem.Page) !u64 {
     );
 
     // Clear the guard page.
-    vm.uvmClear(new_page_table.?, size - stack_bytes);
+    vm.uvm.clear(new_page_table.?, size - stack_bytes);
 
     // Prepare user stack layout and copy argv strings.
     var sp = size;
@@ -232,7 +230,7 @@ pub fn exec(_path: []const u8, argv: []?kmem.Page) !u64 {
         sp -= (sp % 16); // 16-byte align
         if (sp < stack_base) return Error.StackOverflow;
 
-        try vm.copyOut(
+        try vm.uvm.copyFromKernel(
             new_page_table.?,
             sp,
             arg.?,
@@ -248,7 +246,7 @@ pub fn exec(_path: []const u8, argv: []?kmem.Page) !u64 {
     sp -= sp % 16;
     if (sp < stack_base) return Error.StackOverflow;
 
-    try vm.copyOut(
+    try vm.uvm.copyFromKernel(
         new_page_table.?,
         sp,
         @ptrCast(&ustack),
@@ -265,7 +263,7 @@ pub fn exec(_path: []const u8, argv: []?kmem.Page) !u64 {
     } else {
         program_name = _path;
     }
-    misc.safeStrCopy(&proc.name, program_name);
+    utils.safeStrCopy(&proc.name, program_name);
 
     // Commit to the new user image.
     const old_page_table = proc.page_table.?;

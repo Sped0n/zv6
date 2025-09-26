@@ -1,13 +1,6 @@
 const mem = @import("std").mem;
 
-const OpenMode = @import("../fcntl.zig").OpenMode;
-const InodeType = @import("../fs/dinode.zig").InodeType;
-const File = @import("../fs/File.zig");
 const fs = @import("../fs/fs.zig");
-const Inode = @import("../fs/Inode.zig");
-const log = @import("../fs/log.zig");
-const path = @import("../fs/path.zig");
-const Pipe = @import("../fs/Pipe.zig");
 const kmem = @import("../memory/kmem.zig");
 const vm = @import("../memory/vm.zig");
 const param = @import("../param.zig");
@@ -17,10 +10,7 @@ const printf = @import("../printf.zig").printf;
 const elf = @import("../process/elf.zig");
 const Process = @import("../process/Process.zig");
 const riscv = @import("../riscv.zig");
-const argRaw = @import("syscall.zig").argRaw;
-const argStr = @import("syscall.zig").argStr;
-const fetchRaw = @import("syscall.zig").fetchRaw;
-const fetchStr = @import("syscall.zig").fetchStr;
+const sysutils = @import("sysutils.zig");
 
 //
 // File-system system calls.
@@ -29,9 +19,6 @@ const fetchStr = @import("syscall.zig").fetchStr;
 //
 
 const Error = error{
-    FdOutOfRange,
-    OFileIsNull,
-    OutOfOFiles,
     TryToLinkDirectory,
     SameDeviceRequired,
     TryToUnlinkDots,
@@ -46,50 +33,21 @@ const Error = error{
     ArgcOverflow,
 };
 
-fn argFd(n: usize, fd_ptr: ?*usize, file_ptr: ?**File) !void {
-    const fd: u64 = argRaw(u64, n);
-    if (fd >= param.n_ofile) return Error.FdOutOfRange;
-    const proc = Process.current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
-    if (proc.ofiles[fd]) |ofile| {
-        if (fd_ptr) |fdp| fdp.* = fd;
-        if (file_ptr) |fp| fp.* = ofile;
-    } else {
-        return Error.OFileIsNull;
-    }
-}
-
-fn fdAlloc(file: *File) !usize {
-    const proc = try Process.current();
-
-    for (0..param.n_ofile) |fd| {
-        if (proc.ofiles[fd] == null) {
-            proc.ofiles[fd] = file;
-            return fd;
-        }
-    }
-
-    return Error.OutOfOFiles;
-}
-
 pub fn dup() !u64 {
-    var file: *File = undefined;
-    try argFd(0, null, &file);
+    var file: *fs.File = undefined;
+    try sysutils.resolveOpenFileFromArgument(0, null, &file);
 
-    const fd = try fdAlloc(file);
+    const fd = try sysutils.reserveFileDescriptor(file);
     _ = file.dup();
     return @intCast(fd);
 }
 
 pub fn read() !u64 {
-    var file: *File = undefined;
-    try argFd(0, null, &file);
+    var file: *fs.File = undefined;
+    try sysutils.resolveOpenFileFromArgument(0, null, &file);
 
-    const addr: u64 = argRaw(u64, 1);
-    const len: u32 = argRaw(u32, 2);
+    const addr: u64 = sysutils.syscallArgument(u64, 1);
+    const len: u32 = sysutils.syscallArgument(u32, 2);
 
     return @intCast(try file.read(
         addr,
@@ -98,11 +56,11 @@ pub fn read() !u64 {
 }
 
 pub fn write() !u64 {
-    var file: *File = undefined;
-    try argFd(0, null, &file);
+    var file: *fs.File = undefined;
+    try sysutils.resolveOpenFileFromArgument(0, null, &file);
 
-    const addr: u64 = argRaw(u64, 1);
-    const len: u32 = argRaw(u32, 2);
+    const addr: u64 = sysutils.syscallArgument(u64, 1);
+    const len: u32 = sysutils.syscallArgument(u32, 2);
 
     return @intCast(file.write(
         addr,
@@ -111,9 +69,9 @@ pub fn write() !u64 {
 }
 
 pub fn close() !u64 {
-    var file: *File = undefined;
+    var file: *fs.File = undefined;
     var fd: usize = 0;
-    try argFd(0, &fd, &file);
+    try sysutils.resolveOpenFileFromArgument(0, &fd, &file);
 
     const proc = try Process.current();
     proc.ofiles[fd] = null;
@@ -122,10 +80,10 @@ pub fn close() !u64 {
 }
 
 pub fn fileStat() !u64 {
-    var file: *File = undefined;
-    try argFd(0, null, &file);
+    var file: *fs.File = undefined;
+    try sysutils.resolveOpenFileFromArgument(0, null, &file);
 
-    const stat_addr: u64 = argRaw(u64, 1); // user address to struct stat
+    const stat_addr: u64 = sysutils.syscallArgument(u64, 1); // user address to struct stat
 
     try file.stat(stat_addr);
     return 0;
@@ -133,18 +91,19 @@ pub fn fileStat() !u64 {
 
 /// Create the path new as a link to the same inode as old.
 pub fn link() !u64 {
-    var name: [fs.dir_size]u8 = undefined;
-    var new: [param.max_path]u8 = undefined;
-    var old: [param.max_path]u8 = undefined;
+    var new_path_buffer: [param.max_path]u8 = undefined;
+    var old_path_buffer: [param.max_path]u8 = undefined;
 
-    try argStr(0, &old);
-    try argStr(1, &new);
+    const old_path_slice =
+        try sysutils.copyUserCStringFromArgument(0, &old_path_buffer);
+    const new_path_slice =
+        try sysutils.copyUserCStringFromArgument(1, &new_path_buffer);
 
-    log.beginOp();
-    defer log.endOp();
+    fs.log.batch.begin();
+    defer fs.log.batch.end();
 
     // Resolve old path to inode.
-    const inode = try path.toInode(mem.sliceTo(&old, 0));
+    const inode = try fs.path.toInode(old_path_slice);
 
     inode.lock();
     if (inode.dinode.type == .directory) {
@@ -167,8 +126,9 @@ pub fn link() !u64 {
     }
 
     // Resolve new path's parent directory.
-    const parent_inode = try path.toParentInode(
-        mem.sliceTo(&new, 0),
+    var name: [fs.dir_size]u8 = undefined;
+    const parent_inode = try fs.path.toParentInode(
+        new_path_slice,
         &name,
     );
     parent_inode.lock();
@@ -190,7 +150,7 @@ pub fn link() !u64 {
 }
 
 /// Is the directory dp empty except for "." and ".." ?
-fn isDirEmpty(dir_inode: *Inode) bool {
+fn isDirEmpty(dir_inode: *fs.Inode) bool {
     const step = @sizeOf(fs.DirEntry);
     var dir_entry: fs.DirEntry = undefined;
     var offset: u32 = 2 * step;
@@ -212,20 +172,20 @@ fn isDirEmpty(dir_inode: *Inode) bool {
 }
 
 pub fn unlink() !u64 {
-    var _path: [param.max_path]u8 = undefined;
-    try argStr(0, &_path);
-    const path_slice = mem.sliceTo(&_path, 0);
+    var path_buffer: [param.max_path]u8 = undefined;
+    const path_slice =
+        try sysutils.copyUserCStringFromArgument(0, &path_buffer);
 
     var name: [fs.dir_size]u8 = undefined;
 
-    log.beginOp();
-    defer log.endOp();
+    fs.log.batch.begin();
+    defer fs.log.batch.end();
 
-    var inode: *Inode = undefined;
+    var inode: *fs.Inode = undefined;
 
     {
         // Get parent directory and its name.
-        const parent_inode = try path.toParentInode(
+        const parent_inode = try fs.path.toParentInode(
             path_slice,
             &name,
         );
@@ -293,11 +253,11 @@ pub fn unlink() !u64 {
 /// Creates a new file or directory at a given path.
 ///
 /// Return a locked inode.
-fn create(_path: []const u8, _type: InodeType, major: u16, minor: u16) !*Inode {
+fn create(path: []const u8, _type: fs.InodeType, major: u16, minor: u16) !*fs.Inode {
     var name: [fs.dir_size]u8 = undefined;
 
-    const parent_inode = try path.toParentInode(
-        _path,
+    const parent_inode = try fs.path.toParentInode(
+        path,
         &name,
     );
     const name_slice = mem.sliceTo(&name, 0);
@@ -319,7 +279,7 @@ fn create(_path: []const u8, _type: InodeType, major: u16, minor: u16) !*Inode {
     }
     defer parent_inode.unlockPut();
 
-    var inode = Inode.alloc(
+    var inode = fs.Inode.alloc(
         parent_inode.dev,
         _type,
     ) orelse return Error.InodeAllocFailed;
@@ -358,23 +318,22 @@ fn create(_path: []const u8, _type: InodeType, major: u16, minor: u16) !*Inode {
 }
 
 pub fn open() !u64 {
-    const omode: u64 = argRaw(u64, 1);
+    var path_buffer: [param.max_path]u8 = undefined;
+    const path_slice =
+        try sysutils.copyUserCStringFromArgument(0, &path_buffer);
+    const omode: u64 = sysutils.syscallArgument(u64, 1);
 
-    var _path: [param.max_path]u8 = undefined;
-    try argStr(0, &_path);
-    const path_slice = mem.sliceTo(&_path, 0);
+    fs.log.batch.begin();
+    defer fs.log.batch.end();
 
-    log.beginOp();
-    defer log.endOp();
-
-    var inode: *Inode = undefined;
-    if (omode & @intFromEnum(OpenMode.create) != 0) {
+    var inode: *fs.Inode = undefined;
+    if (omode & @intFromEnum(fs.OpenMode.create) != 0) {
         inode = try create(path_slice, .file, 0, 0);
     } else {
-        inode = try path.toInode(path_slice);
+        inode = try fs.path.toInode(path_slice);
         inode.lock();
         if (inode.dinode.type == .directory and
-            omode != @intFromEnum(OpenMode.read_only))
+            omode != @intFromEnum(fs.OpenMode.read_only))
         {
             // Users are not allowed to open a read-only directory for writing.
             inode.unlockPut();
@@ -392,9 +351,9 @@ pub fn open() !u64 {
     }
 
     // Allocate file structure and file descriptor.
-    const file = try File.alloc();
+    const file = try fs.File.alloc();
     errdefer file.close();
-    const fd = try fdAlloc(file);
+    const fd = try sysutils.reserveFileDescriptor(file);
 
     // Initialize file structure.
     if (inode.dinode.type == .device) {
@@ -405,24 +364,24 @@ pub fn open() !u64 {
         file.offset = 0;
     }
     file.inode = inode;
-    file.readable = !(omode & @intFromEnum(OpenMode.write_only) != 0);
-    file.writable = (omode & @intFromEnum(OpenMode.write_only) != 0) or
-        (omode & @intFromEnum(OpenMode.read_write) != 0);
+    file.readable = !(omode & @intFromEnum(fs.OpenMode.write_only) != 0);
+    file.writable = (omode & @intFromEnum(fs.OpenMode.write_only) != 0) or
+        (omode & @intFromEnum(fs.OpenMode.read_write) != 0);
 
     // Handle truncation.
-    if (omode & @intFromEnum(OpenMode.truncate) != 0 and
+    if (omode & @intFromEnum(fs.OpenMode.truncate) != 0 and
         inode.dinode.type == .file) inode.truncate();
 
     return fd;
 }
 
 pub fn mkdir() !u64 {
-    var _path: [param.max_path]u8 = undefined;
-    try argStr(0, &_path);
-    const path_slice = mem.sliceTo(&_path, 0);
+    var path_buffer: [param.max_path]u8 = undefined;
+    const path_slice =
+        try sysutils.copyUserCStringFromArgument(0, &path_buffer);
 
-    log.beginOp();
-    defer log.endOp();
+    fs.log.batch.begin();
+    defer fs.log.batch.end();
 
     const inode = try create(path_slice, .directory, 0, 0);
     inode.unlockPut();
@@ -430,15 +389,15 @@ pub fn mkdir() !u64 {
 }
 
 pub fn mknod() !u64 {
-    var _path: [param.max_path]u8 = undefined;
-    try argStr(0, &_path);
-    const path_slice = mem.sliceTo(&_path, 0);
+    var path_buffer: [param.max_path]u8 = undefined;
+    const path_slice =
+        try sysutils.copyUserCStringFromArgument(0, &path_buffer);
+    const major: u16 = sysutils.syscallArgument(u16, 1);
+    const minor: u16 = sysutils.syscallArgument(u16, 2);
 
-    log.beginOp();
-    defer log.endOp();
+    fs.log.batch.begin();
+    defer fs.log.batch.end();
 
-    const major: u16 = argRaw(u16, 1);
-    const minor: u16 = argRaw(u16, 2);
     const inode = try create(
         path_slice,
         .device,
@@ -450,20 +409,20 @@ pub fn mknod() !u64 {
 }
 
 pub fn chdir() !u64 {
-    var _path: [param.max_path]u8 = undefined;
-    try argStr(0, &_path);
-    const path_slice = mem.sliceTo(&_path, 0);
+    var path_buffer: [param.max_path]u8 = undefined;
+    const path_slice =
+        try sysutils.copyUserCStringFromArgument(0, &path_buffer);
 
     const proc = try Process.current();
     assert(proc.cwd != null, @src());
 
-    var inode: *Inode = undefined;
+    var inode: *fs.Inode = undefined;
 
     {
-        log.beginOp();
-        defer log.endOp();
+        fs.log.batch.begin();
+        defer fs.log.batch.end();
 
-        inode = try path.toInode(path_slice);
+        inode = try fs.path.toInode(path_slice);
 
         inode.lock();
         errdefer inode.put();
@@ -480,11 +439,11 @@ pub fn chdir() !u64 {
 }
 
 pub fn exec() !u64 {
-    var _path: [param.max_path]u8 = undefined;
-    try argStr(0, &_path);
-    const path_slice = mem.sliceTo(&_path, 0);
+    var path_buffer: [param.max_path]u8 = undefined;
+    const path_slice =
+        try sysutils.copyUserCStringFromArgument(0, &path_buffer);
 
-    const uargv: u64 = argRaw(u64, 1);
+    const uargv: u64 = sysutils.syscallArgument(u64, 1);
 
     var argv = [_]?kmem.Page{null} ** param.max_arg;
     defer for (0..param.max_arg) |j| {
@@ -498,41 +457,41 @@ pub fn exec() !u64 {
         if (i >= argv.len) {
             return Error.ArgcOverflow;
         }
-        var uarg: u64 = 0;
-        try fetchRaw(uargv + @sizeOf(u64) * i, &uarg);
+        const uarg =
+            try sysutils.copyU64FromCurrentProcess(uargv + @sizeOf(u64) * i);
         if (uarg == 0) break;
 
         argv[i] = try kmem.alloc();
-        try fetchStr(uarg, argv[i].?);
+        _ = try sysutils.copyCStringFromCurrentProcess(uarg, argv[i].?);
     }
 
     return try elf.exec(path_slice, argv[0..i]);
 }
 
 pub fn pipe() !u64 {
-    const fd_array: u64 = argRaw(u64, 0);
+    const fd_array: u64 = sysutils.syscallArgument(u64, 0);
 
     const proc = try Process.current();
     assert(proc.page_table != null, @src());
 
-    var read_file: *File = undefined;
-    var write_file: *File = undefined;
-    try Pipe.alloc(&read_file, &write_file);
+    var read_file: *fs.File = undefined;
+    var write_file: *fs.File = undefined;
+    try fs.Pipe.alloc(&read_file, &write_file);
     errdefer read_file.close();
     errdefer write_file.close();
 
-    const fd0: u32 = @intCast(try fdAlloc(read_file));
+    const fd0: u32 = @intCast(try sysutils.reserveFileDescriptor(read_file));
     errdefer proc.ofiles[fd0] = null;
-    const fd1: u32 = @intCast(try fdAlloc(write_file));
+    const fd1: u32 = @intCast(try sysutils.reserveFileDescriptor(write_file));
     errdefer proc.ofiles[fd1] = null;
 
-    try vm.copyOut(
+    try vm.uvm.copyFromKernel(
         proc.page_table.?,
         fd_array,
         @as([*]const u8, @ptrCast(&fd0)),
         @sizeOf(@TypeOf(fd0)),
     );
-    try vm.copyOut(
+    try vm.uvm.copyFromKernel(
         proc.page_table.?,
         fd_array + @sizeOf(@TypeOf(fd0)),
         @as([*]const u8, @ptrCast(&fd1)),

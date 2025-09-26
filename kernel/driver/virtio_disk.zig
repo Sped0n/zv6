@@ -1,12 +1,11 @@
-const Buffer = @import("../fs/Buffer.zig");
 const fs = @import("../fs/fs.zig");
 const SleepLock = @import("../lock/SleepLock.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
 const kmem = @import("../memory/kmem.zig");
-const fence = @import("../misc.zig").fence;
 const assert = @import("../printf.zig").assert;
 const panic = @import("../printf.zig").panic;
 const Process = @import("../process/Process.zig");
+const utils = @import("../utils.zig");
 const virtio = @import("../virtio.zig");
 
 const InFlightOperationStatus = enum(u8) {
@@ -14,7 +13,7 @@ const InFlightOperationStatus = enum(u8) {
     finished = 0,
 };
 const InFlightOperation = struct {
-    buffer: ?*Buffer,
+    buffer: ?*fs.Buffer,
     status: InFlightOperationStatus,
 };
 
@@ -241,7 +240,7 @@ fn allocThreeDescs(indexes: *[3]u16) bool {
     return true;
 }
 
-pub fn diskReadWrite(buffer: *Buffer, is_write: bool) void {
+pub fn diskReadWrite(buffer: *fs.Buffer, is_write: bool) void {
     const sector: u64 = buffer.blockno * (fs.block_size / 512);
 
     disk.lock.acquire();
@@ -292,10 +291,10 @@ pub fn diskReadWrite(buffer: *Buffer, is_write: bool) void {
     // tell the device the first index in our chain of descriptors.
     disk.avail.ring[disk.avail.index % virtio.num] = indexes[0];
 
-    fence();
+    utils.fence();
     // tell the device another avail ring entry is available.
     disk.avail.index +%= 1;
-    fence();
+    utils.fence();
 
     virtio.MMIO.write(.queue_notify, 0); // value is queue number
 
@@ -324,13 +323,13 @@ pub fn intr() void {
         virtio.MMIO.read(.interrupt_status) & 0x3,
     );
 
-    fence();
+    utils.fence();
 
     // the device increments disk.used.index when it
     // adds an entry to the used ring.
 
     while (disk.used_index != disk.used.index) : (disk.used_index +%= 1) {
-        fence();
+        utils.fence();
         const id = disk.used.ring[disk.used_index % virtio.num].id;
 
         assert(disk.in_flight_operations[id].status == .finished, @src());

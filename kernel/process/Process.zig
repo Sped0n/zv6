@@ -3,22 +3,18 @@ const builtin = std.builtin;
 const mem = std.mem;
 const math = std.math;
 
-const File = @import("../fs/File.zig");
 const fs = @import("../fs/fs.zig");
-const Inode = @import("../fs/Inode.zig");
-const log = @import("../fs/log.zig");
-const path = @import("../fs/path.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
 const memlayout = @import("../memlayout.zig");
 const kmem = @import("../memory/kmem.zig");
 const vm = @import("../memory/vm.zig");
-const misc = @import("../misc.zig");
 const param = @import("../param.zig");
 const assert = @import("../printf.zig").assert;
 const printf = @import("../printf.zig").printf;
 const panic = @import("../printf.zig").panic;
 const riscv = @import("../riscv.zig");
 const trap = @import("../trap.zig");
+const utils = @import("../utils.zig");
 const Context = @import("context.zig").Context;
 const Cpu = @import("Cpu.zig");
 const sched = @import("scheduler.zig").sched;
@@ -59,8 +55,8 @@ size: u64, // Size of process memory (bytes)
 page_table: ?riscv.PageTable, // User page table
 trap_frame: ?*TrapFrame, // data page for trampoline.S
 context: Context, // swtch() here to run process
-ofiles: [param.n_ofile]?*File, // Open files
-cwd: ?*Inode, // Current directory
+ofiles: [param.n_ofile]?*fs.File, // Open files
+cwd: ?*fs.Inode, // Current directory
 name: [16]u8, // Process name (debugging)
 
 pub var procs: [param.n_proc]Self = [_]Self{Self{
@@ -113,7 +109,7 @@ pub fn mapStacks(kpgtbl: riscv.PageTable) !void {
 
         const virt_addr = memlayout.kernelStack(i);
 
-        vm.kvmMap(
+        vm.kvm.map(
             kpgtbl,
             virt_addr,
             @intFromPtr(page0),
@@ -124,7 +120,7 @@ pub fn mapStacks(kpgtbl: riscv.PageTable) !void {
                 riscv.PteFlag.w,
             ),
         );
-        vm.kvmMap(
+        vm.kvm.map(
             kpgtbl,
             virt_addr + riscv.pg_size,
             @intFromPtr(page1),
@@ -246,8 +242,8 @@ fn free(self: *Self) void {
 /// but with trampoline and trapframe pages.
 pub fn createPageTable(self: *Self) !riscv.PageTable {
     // An empty page table.
-    const page_table = try vm.uvmCreate();
-    errdefer vm.uvmFree(page_table, 0);
+    const page_table = try vm.uvm.create();
+    errdefer vm.uvm.free(page_table, 0);
 
     // map the trampoline code (for system call return)
     // at the highest user virtual address.
@@ -277,9 +273,9 @@ pub fn createPageTable(self: *Self) !riscv.PageTable {
 /// Free a process's page table, and free the
 /// physical memory it refers to.
 pub fn freePageTable(page_table: riscv.PageTable, size: u64) void {
-    vm.uvmUnmap(page_table, memlayout.trampoline, 1, false);
-    vm.uvmUnmap(page_table, memlayout.trap_frame, 1, false);
-    vm.uvmFree(page_table, size);
+    vm.uvm.unmap(page_table, memlayout.trampoline, 1, false);
+    vm.uvm.unmap(page_table, memlayout.trap_frame, 1, false);
+    vm.uvm.free(page_table, size);
 }
 
 /// Set up first user process.
@@ -297,15 +293,15 @@ pub fn userInit() void {
 
     // allocate one user page and copy initcode's instructions
     // and data into it.
-    vm.uvmFirst(page_table, initcode);
+    vm.uvm.first(page_table, initcode);
     proc.size = riscv.pg_size;
 
     // prepare for the very first "return" from kernel to user.
     trap_frame.epc = 0; // user program counter
     trap_frame.sp = riscv.pg_size; // user stack pointer
 
-    misc.safeStrCopy(&proc.name, "initcode");
-    proc.cwd = path.toInode("/") catch |e| panic(
+    utils.safeStrCopy(&proc.name, "initcode");
+    proc.cwd = fs.path.toInode("/") catch |e| panic(
         @src(),
         "path.toInode failed with {s}",
         .{@errorName(e)},
@@ -328,14 +324,14 @@ pub fn growCurrent(n: i32) !void {
 
     var size = proc.size;
     if (n > 0) {
-        size = try vm.uvmMalloc(
+        size = try vm.uvm.malloc(
             proc.page_table.?,
             size,
             size + @abs(n),
             @intFromEnum(riscv.PteFlag.w),
         );
     } else if (n < 0) {
-        size = vm.uvmDealloc(
+        size = vm.uvm.dealloc(
             proc.page_table.?,
             size,
             size - @abs(n),
@@ -366,7 +362,7 @@ pub fn fork() !u32 {
         errdefer new_proc.free();
 
         // Copy user memory from parent to child.
-        try vm.uvmCopy(
+        try vm.uvm.copy(
             proc.page_table.?,
             new_proc.page_table.?,
             proc.size,
@@ -388,7 +384,7 @@ pub fn fork() !u32 {
         new_proc.cwd = proc.cwd.?.dup();
 
         // Copy name from parent process.
-        misc.safeStrCopy(&new_proc.name, mem.sliceTo(&proc.name, 0));
+        utils.safeStrCopy(&new_proc.name, mem.sliceTo(&proc.name, 0));
 
         // Create a copy of PID inside lock guard.
         pid = new_proc.pid;
@@ -444,8 +440,8 @@ pub fn exit(status: i32) void {
     }
 
     {
-        log.beginOp();
-        defer log.endOp();
+        fs.log.batch.begin();
+        defer fs.log.batch.end();
 
         proc.cwd.?.put();
     }
@@ -501,7 +497,7 @@ pub fn wait(addr: u64) !u32 {
             // Found one.
             const pid = proc.pid;
             if (addr != 0) {
-                try vm.copyOut(
+                try vm.uvm.copyFromKernel(
                     curr_proc.page_table.?,
                     addr,
                     @ptrCast(&proc.exit_state),
@@ -663,14 +659,14 @@ pub fn eitherCopyOut(
 
     if (is_user_dst) {
         assert(proc.page_table != null, @src());
-        try vm.copyOut(
+        try vm.uvm.copyFromKernel(
             proc.page_table.?,
             dst_addr,
             src,
             len,
         );
     } else {
-        misc.memMove(@ptrFromInt(dst_addr), src, len);
+        utils.memMove(@ptrFromInt(dst_addr), src, len);
     }
 }
 
@@ -686,14 +682,14 @@ pub fn eitherCopyIn(dst: [*]u8, is_user_src: bool, src_addr: u64, len: u64) !voi
 
     if (is_user_src) {
         assert(proc.page_table != null, @src());
-        try vm.copyIn(
+        try vm.kvm.copyFromUser(
             proc.page_table.?,
             dst,
             src_addr,
             len,
         );
     } else {
-        misc.memMove(dst, @ptrFromInt(src_addr), len);
+        utils.memMove(dst, @ptrFromInt(src_addr), len);
     }
 }
 
