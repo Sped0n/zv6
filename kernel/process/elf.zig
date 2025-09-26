@@ -104,7 +104,7 @@ inline fn permFromFlags(flags: u32) u64 {
     return perm;
 }
 
-pub fn exec(_path: []const u8, argv: []?kmem.Page) !u64 {
+pub fn exec(_path: []const u8, argv: []const kmem.Page) !u64 {
     var size: u64 = 0;
 
     var new_page_table: ?riscv.PageTable = null;
@@ -222,7 +222,7 @@ pub fn exec(_path: []const u8, argv: []?kmem.Page) !u64 {
     for (argv, 0..) |arg, i| {
         const arg_len_with_null = (mem.indexOfScalar(
             u8,
-            arg.?,
+            arg,
             0,
         ) orelse 0) + 1;
 
@@ -233,7 +233,7 @@ pub fn exec(_path: []const u8, argv: []?kmem.Page) !u64 {
         try vm.uvm.copyFromKernel(
             new_page_table.?,
             sp,
-            arg.?,
+            arg,
             arg_len_with_null,
         );
         ustack[i] = sp;
