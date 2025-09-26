@@ -1,9 +1,6 @@
 const fs = @import("fs.zig");
-const Pipe = @import("Pipe.zig");
-const Inode = @import("Inode.zig");
 const param = @import("../param.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
-const log = @import("log.zig");
 const Process = @import("../process/Process.zig");
 const Stat = @import("stat.zig").Stat;
 const vm = @import("../memory/vm.zig");
@@ -14,8 +11,8 @@ type: enum { none, pipe, inode, device },
 ref: u32,
 readable: bool,
 writable: bool,
-pipe: ?*Pipe,
-inode: ?*Inode,
+pipe: ?*fs.Pipe,
+inode: ?*fs.Inode,
 offset: u32,
 major: u16,
 
@@ -118,8 +115,8 @@ pub fn close(self: *Self) void {
         },
         .inode, .device => {
             assert(tmp.inode != null, @src());
-            log.beginOp();
-            defer log.endOp();
+            fs.log.batch.begin();
+            defer fs.log.batch.end();
 
             tmp.inode.?.put();
         },
@@ -149,7 +146,7 @@ pub fn stat(self: *Self, user_virt_addr: u64) !void {
     }
 
     assert(proc.page_table != null, @src());
-    try vm.copyOut(
+    try vm.uvm.copyFromKernel(
         proc.page_table.?,
         user_virt_addr,
         @ptrCast(&_stat),
@@ -232,7 +229,8 @@ pub fn write(self: *Self, user_virt_addr: u64, len: u32) !u32 {
                 // and 2 blocks of slop for non-aligned writes.
                 // this really belongs lower down, since Inode.write()
                 // might be writing a device like the console.
-                const max = ((param.max_opblocks - 1 - 1 - 2) / 2) * fs.block_size;
+                const max =
+                    ((param.max_opblocks - 1 - 1 - 2) / 2) * fs.block_size;
 
                 var i: u32 = 0;
                 var written: u32 = 0;
@@ -240,8 +238,8 @@ pub fn write(self: *Self, user_virt_addr: u64, len: u32) !u32 {
                     const rest = @min(max, len - i);
 
                     {
-                        log.beginOp();
-                        defer log.endOp();
+                        fs.log.batch.begin();
+                        defer fs.log.batch.end();
 
                         inode.lock();
                         defer inode.unlock();

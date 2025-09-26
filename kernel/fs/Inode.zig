@@ -2,19 +2,13 @@ const mem = @import("std").mem;
 
 const SleepLock = @import("../lock/SleepLock.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
-const misc = @import("../misc.zig");
 const param = @import("../param.zig");
 const printf = @import("../printf.zig").printf;
 const assert = @import("../printf.zig").assert;
 const panic = @import("../printf.zig").panic;
 const Process = @import("../process/Process.zig");
-const Buffer = @import("Buffer.zig");
-const DiskInode = @import("dinode.zig").DiskInode;
+const utils = @import("../utils.zig");
 const fs = @import("fs.zig");
-const DirEntry = fs.DirEntry;
-const InodeType = @import("dinode.zig").InodeType;
-const log = @import("log.zig");
-const Stat = @import("stat.zig").Stat;
 
 // Inodes ----------------------------------------------------------------------
 //
@@ -91,7 +85,7 @@ ref: u32,
 _lock: SleepLock,
 valid: bool,
 
-dinode: DiskInode,
+dinode: fs.DiskInode,
 
 const Self = @This();
 
@@ -146,7 +140,7 @@ var inode_table = struct {
         .ref = 0,
         ._lock = undefined,
         .valid = false,
-        .dinode = DiskInode{
+        .dinode = fs.DiskInode{
             .type = .free,
             .major = 0,
             .minor = 0,
@@ -172,22 +166,25 @@ pub fn get(dev: u32, inum: u32) *Self {
 /// Mark it as allocated by giving it type type.
 /// Returns an unlocked but allocated and referenced inode,
 /// or null if there is no free inode.
-pub fn alloc(dev: u32, _type: InodeType) ?*Self {
+pub fn alloc(dev: u32, _type: fs.InodeType) ?*Self {
     for (1..fs.super_block.n_inodes) |inum| {
-        const buffer = Buffer.readFrom(
+        const buffer = fs.Buffer.readFrom(
             dev,
             fs.super_block.getInodeBlockNo(@intCast(inum)),
         );
         defer buffer.release();
 
         const disk_inode = &@as(
-            [*]DiskInode,
+            [*]fs.DiskInode,
             @ptrCast(&buffer.data),
         )[inum % fs.inodes_per_block];
         if (disk_inode.type == .free) { // a free node
-            @memset(@as([*]u8, @ptrCast(disk_inode))[0..@sizeOf(DiskInode)], 0);
+            @memset(
+                @as([*]u8, @ptrCast(disk_inode))[0..@sizeOf(fs.DiskInode)],
+                0,
+            );
             disk_inode.type = _type;
-            log.write(buffer); // mark it allocated on the disk
+            fs.log.write(buffer); // mark it allocated on the disk
             return get(dev, @intCast(inum));
         }
     }
@@ -199,18 +196,18 @@ pub fn alloc(dev: u32, _type: InodeType) ?*Self {
 /// that lives on disk.
 /// Caller must hold (*Inode)->lock.
 pub fn update(self: *Self) void {
-    const buffer = Buffer.readFrom(
+    const buffer = fs.Buffer.readFrom(
         self.dev,
         fs.super_block.getInodeBlockNo(self.inum),
     );
     defer buffer.release();
 
     const disk_inode = &@as(
-        [*]DiskInode,
+        [*]fs.DiskInode,
         @ptrCast(&buffer.data),
     )[self.inum % fs.inodes_per_block];
     disk_inode.* = self.dinode;
-    log.write(buffer);
+    fs.log.write(buffer);
 }
 
 /// Increment reference count for *Inode.
@@ -233,14 +230,14 @@ pub fn lock(self: *Self) void {
     if (self.valid) return;
 
     {
-        const buffer = Buffer.readFrom(
+        const buffer = fs.Buffer.readFrom(
             self.dev,
             fs.super_block.getInodeBlockNo(self.inum),
         );
         defer buffer.release();
 
         const disk_inode = &@as(
-            [*]DiskInode,
+            [*]fs.DiskInode,
             @ptrCast(&buffer.data),
         )[self.inum % fs.inodes_per_block];
         (&self.dinode).* = disk_inode.*;
@@ -328,7 +325,7 @@ fn bmap(self: *Self, blockno: u32) ?u32 {
             self.dinode.addrs[fs.n_direct] = addr;
         }
 
-        const buffer = Buffer.readFrom(self.dev, addr);
+        const buffer = fs.Buffer.readFrom(self.dev, addr);
         defer buffer.release();
 
         const buffer_data: [*]u32 = @ptrCast(&buffer.data);
@@ -337,7 +334,7 @@ fn bmap(self: *Self, blockno: u32) ?u32 {
         if (addr == 0) {
             addr = fs.block.alloc(self.dev) orelse return null;
             buffer_data[_blockno] = addr;
-            log.write(buffer);
+            fs.log.write(buffer);
         }
 
         return addr;
@@ -358,7 +355,7 @@ pub fn truncate(self: *Self) void {
 
     if (self.dinode.addrs[fs.n_direct] != 0) {
         {
-            const buffer = Buffer.readFrom(
+            const buffer = fs.Buffer.readFrom(
                 self.dev,
                 self.dinode.addrs[fs.n_direct],
             );
@@ -382,7 +379,7 @@ pub fn truncate(self: *Self) void {
 
 /// Copy stat infomation from inode
 /// Caller must hold self._lock
-pub fn statCopyTo(self: *Self, stat: *Stat) void {
+pub fn statCopyTo(self: *Self, stat: *fs.Stat) void {
     stat.dev = self.dev;
     stat.inum = self.inum;
     stat.type = self.dinode.type;
@@ -423,7 +420,7 @@ pub fn read(
             offset_anchor / fs.block_size,
         ) orelse return Error.BMapFailed;
 
-        const buffer = Buffer.readFrom(self.dev, blockno);
+        const buffer = fs.Buffer.readFrom(self.dev, blockno);
         defer buffer.release();
 
         const modded_offset_anchor = offset_anchor % fs.block_size;
@@ -482,7 +479,7 @@ pub fn write(
             offset_anchor / fs.block_size,
         ) orelse return Error.BMapFailed;
 
-        const buffer = Buffer.readFrom(self.dev, blockno);
+        const buffer = fs.Buffer.readFrom(self.dev, blockno);
         defer buffer.release();
 
         step = @min(
@@ -495,7 +492,7 @@ pub fn write(
             src_anchor,
             step,
         );
-        log.write(buffer);
+        fs.log.write(buffer);
     }
 
     return n_write;
@@ -509,8 +506,8 @@ pub fn dirLookUp(self: *Self, name: []const u8, offset_ptr: ?*u32) ?*Self {
     assert(self.dinode.type == .directory, @src());
 
     var offset: u32 = 0;
-    var dir_entry: DirEntry = undefined;
-    const step = @sizeOf(DirEntry);
+    var dir_entry: fs.DirEntry = undefined;
+    const step = @sizeOf(fs.DirEntry);
 
     while (offset < self.dinode.size) : (offset += step) {
         assert(
@@ -549,8 +546,8 @@ pub fn dirLink(self: *Self, name: []const u8, inum: u32) !void {
 
     // Look for an empty dir_entry.
     var offset: u32 = 0;
-    var dir_entry: DirEntry = undefined;
-    const step: u32 = @sizeOf(DirEntry);
+    var dir_entry: fs.DirEntry = undefined;
+    const step: u32 = @sizeOf(fs.DirEntry);
     while (offset < self.dinode.size) : (offset += step) {
         assert(
             self.read(
@@ -571,7 +568,7 @@ pub fn dirLink(self: *Self, name: []const u8, inum: u32) !void {
         if (dir_entry.inum == 0) break;
     }
 
-    misc.safeStrCopy(&dir_entry.name, name);
+    utils.safeStrCopy(&dir_entry.name, name);
     dir_entry.inum = @intCast(inum);
 
     const write_size = try self.write(

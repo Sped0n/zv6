@@ -1,11 +1,10 @@
 const mem = @import("std").mem;
 
-const misc = @import("../misc.zig");
 const param = @import("../param.zig");
 const panic = @import("../printf.zig").panic;
 const Process = @import("../process/Process.zig");
+const utils = @import("../utils.zig");
 const fs = @import("fs.zig");
-const Inode = @import("Inode.zig");
 
 pub const Error = error{
     InodeIsNotDirectory,
@@ -24,7 +23,7 @@ pub const Error = error{
 ///   skipElem("a", name) = 1, setting name = "a"
 ///   skipElem("", name) = skipElem("////", name) = null
 ///
-fn skipElem(path_remaining: []const u8, name: []u8) ?[]const u8 {
+fn skipElem(path_remaining: []const u8, out_name: []u8) ?[]const u8 {
     var i: usize = 0;
 
     // Skip Leading Slashes
@@ -47,8 +46,12 @@ fn skipElem(path_remaining: []const u8, name: []u8) ?[]const u8 {
     const elem_len = @min(i - start, fs.dir_size - 1);
 
     // Copy the Element to name
-    misc.memMove(name.ptr, path_remaining[start .. start + elem_len].ptr, elem_len);
-    name[elem_len] = 0;
+    utils.memMove(
+        out_name.ptr,
+        path_remaining[start .. start + elem_len].ptr,
+        elem_len,
+    );
+    out_name[elem_len] = 0;
 
     // Skip Trailing Slashes
     while (i < path_remaining.len and path_remaining[i] == '/') {
@@ -62,12 +65,12 @@ fn skipElem(path_remaining: []const u8, name: []u8) ?[]const u8 {
 /// If is_parent == true, return the inode for the parent and copy the final
 /// path element into name, which must have room for dir_sz bytes.
 /// Must be called inside a transaction since it calls inode.put().
-fn lookup(path: []const u8, comptime is_parent: bool, name: []u8) !*Inode {
-    var inode: *Inode = undefined;
+fn lookup(path: []const u8, comptime is_parent: bool, out_name: []u8) !*fs.Inode {
+    var inode: *fs.Inode = undefined;
 
     if (path.len > 0 and path[0] == '/') {
         // absolute path
-        inode = Inode.get(param.root_dev, fs.root_ino);
+        inode = fs.Inode.get(param.root_dev, fs.root_ino);
     } else {
         // relative path
         const curr_proc = Process.current() catch panic(
@@ -88,12 +91,12 @@ fn lookup(path: []const u8, comptime is_parent: bool, name: []u8) !*Inode {
 
     errdefer inode.put();
 
-    var next: *Inode = undefined;
+    var next: *fs.Inode = undefined;
     var path_remaining: []const u8 = path;
     while (true) : (inode = next) {
         const after = skipElem(
             path_remaining,
-            name,
+            out_name,
         ) orelse break;
 
         {
@@ -110,7 +113,7 @@ fn lookup(path: []const u8, comptime is_parent: bool, name: []u8) !*Inode {
             }
 
             if (inode.dirLookUp(
-                mem.sliceTo(name, 0),
+                mem.sliceTo(out_name, 0),
                 null,
             )) |_inode| {
                 next = _inode;
@@ -130,11 +133,11 @@ fn lookup(path: []const u8, comptime is_parent: bool, name: []u8) !*Inode {
     return inode;
 }
 
-pub fn toInode(path: []const u8) !*Inode {
-    var name: [fs.dir_size]u8 = [_]u8{0} ** fs.dir_size;
-    return lookup(path, false, &name);
+pub fn toInode(path: []const u8) !*fs.Inode {
+    var tmp: [fs.dir_size]u8 = [_]u8{0} ** fs.dir_size;
+    return lookup(path, false, &tmp);
 }
 
-pub fn toParentInode(path: []const u8, name: []u8) !*Inode {
-    return lookup(path, true, name);
+pub fn toParentInode(path: []const u8, out_name: []u8) !*fs.Inode {
+    return lookup(path, true, out_name);
 }

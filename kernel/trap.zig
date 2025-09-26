@@ -29,7 +29,7 @@ pub fn init() void {
 }
 
 /// set up to take exceptions and traps while in the kernel
-pub fn initHart() void {
+pub fn initHardwareThread() void {
     riscv.stvec.write(@intFromPtr(&kernelVec));
 }
 

@@ -1,13 +1,10 @@
 const SpinLock = @import("../lock/SpinLock.zig");
-const memMove = @import("../misc.zig").memMove;
-const misc = @import("../misc.zig");
 const param = @import("../param.zig");
 const assert = @import("../printf.zig").assert;
 const panic = @import("../printf.zig").panic;
 const Process = @import("../process/Process.zig");
-const Buffer = @import("Buffer.zig");
+const utils = @import("../utils.zig");
 const fs = @import("fs.zig");
-const SuperBlock = @import("SuperBlock.zig").SuperBlock;
 
 // Simple logging that allows concurrent FS system calls.
 //
@@ -61,7 +58,7 @@ var log = struct {
     },
 };
 
-pub fn init(dev: u32, super_block: *SuperBlock) void {
+pub fn init(dev: u32, super_block: *fs.SuperBlock) void {
     assert(@sizeOf(Header) < fs.block_size, @src());
 
     log.lock.init("log");
@@ -75,12 +72,12 @@ pub fn init(dev: u32, super_block: *SuperBlock) void {
 fn installTransaction(try_recover: bool) void {
     var tail: u32 = 0;
     while (tail < log.header.n) : (tail += 1) {
-        const log_buffer = Buffer.readFrom(log.dev, log.start + tail + 1);
-        const disk_buffer = Buffer.readFrom(log.dev, log.header.block[tail]);
+        const log_buffer = fs.Buffer.readFrom(log.dev, log.start + tail + 1);
+        const disk_buffer = fs.Buffer.readFrom(log.dev, log.header.block[tail]);
         defer disk_buffer.release();
         defer log_buffer.release();
 
-        memMove(&disk_buffer.data, &log_buffer.data, fs.block_size);
+        utils.memMove(&disk_buffer.data, &log_buffer.data, fs.block_size);
         disk_buffer.writeBack();
         if (!try_recover) disk_buffer.unPin();
     }
@@ -88,28 +85,28 @@ fn installTransaction(try_recover: bool) void {
 
 /// Read the log header from disk into the in-memory log header
 fn syncLogFromDisk() void {
-    const buffer = Buffer.readFrom(log.dev, log.start);
+    const buffer = fs.Buffer.readFrom(log.dev, log.start);
     defer buffer.release();
 
     const log_header = @as(
         [*]u8,
         @ptrCast(&log.header),
     )[0..@sizeOf(@TypeOf(log.header))];
-    misc.memMove(log_header, &buffer.data, log_header.len);
+    utils.memMove(log_header, &buffer.data, log_header.len);
 }
 
 /// Write in-memory log header to disk.
 /// This is the true point at which the
 /// current transaction commits.
 fn syncLogToDisk() void {
-    const buf = Buffer.readFrom(log.dev, log.start);
+    const buf = fs.Buffer.readFrom(log.dev, log.start);
     defer buf.release();
 
     const log_header = @as(
         [*]u8,
         @ptrCast(&log.header),
     )[0..@sizeOf(@TypeOf(log.header))];
-    misc.memMove(&buf.data, log_header, log_header.len);
+    utils.memMove(&buf.data, log_header, log_header.len);
 
     buf.writeBack();
 }
@@ -122,70 +119,72 @@ fn tryRecover() void {
     log.header.n = 0;
 }
 
-/// called at the start of each FS syscall
-pub fn beginOp() void {
-    log.lock.acquire();
-    while (true) {
-        if (log.committing) {
-            Process.sleep(@intFromPtr(&log), &log.lock);
-        } else if (log.header.n + (log.outstanding + 1) * param.max_opblocks > param.log_size) {
-            // this op might exhaust log space; wait for commit.
-            Process.sleep(@intFromPtr(&log), &log.lock);
-        } else {
-            log.outstanding += 1;
-            log.lock.release();
-            break;
+pub const batch = struct {
+    /// called at the start of each FS syscall
+    pub fn begin() void {
+        log.lock.acquire();
+        while (true) {
+            if (log.committing) {
+                Process.sleep(@intFromPtr(&log), &log.lock);
+            } else if (log.header.n + (log.outstanding + 1) * param.max_opblocks > param.log_size) {
+                // this op might exhaust log space; wait for commit.
+                Process.sleep(@intFromPtr(&log), &log.lock);
+            } else {
+                log.outstanding += 1;
+                log.lock.release();
+                break;
+            }
         }
     }
-}
 
-/// called at the end of each FS system call.
-/// commits if this was the last outstanding operation.
-pub fn endOp() void {
-    var do_commit = false;
+    /// called at the end of each FS system call.
+    /// commits if this was the last outstanding operation.
+    pub fn end() void {
+        var do_commit = false;
 
-    {
-        log.lock.acquire();
-        defer log.lock.release();
+        {
+            log.lock.acquire();
+            defer log.lock.release();
 
-        log.outstanding -= 1;
-        assert(!log.committing, @src());
+            log.outstanding -= 1;
+            assert(!log.committing, @src());
 
-        if (log.outstanding == 0) {
-            do_commit = true;
-            log.committing = true;
-        } else {
-            // begin_op() may be waiting for log space,
-            // and decrementing log.outstanding has decreased
-            // the amount of reserved space.
+            if (log.outstanding == 0) {
+                do_commit = true;
+                log.committing = true;
+            } else {
+                // begin_op() may be waiting for log space,
+                // and decrementing log.outstanding has decreased
+                // the amount of reserved space.
+                Process.wakeUp(@intFromPtr(&log));
+            }
+        }
+
+        if (do_commit) {
+            // call commit w/o holding locks, since not allowed
+            // to sleep with locks.
+            commit();
+            log.lock.acquire();
+            defer log.lock.release();
+            log.committing = false;
             Process.wakeUp(@intFromPtr(&log));
         }
     }
-
-    if (do_commit) {
-        // call commit w/o holding locks, since not allowed
-        // to sleep with locks.
-        commit();
-        log.lock.acquire();
-        defer log.lock.release();
-        log.committing = false;
-        Process.wakeUp(@intFromPtr(&log));
-    }
-}
+};
 
 /// Copy modified blocks from cache to log.
 fn syncChangesToLog() void {
     var tail: u32 = 0;
     while (tail < log.header.n) : (tail += 1) {
-        const to = Buffer.readFrom(log.dev, log.start + tail + 1);
+        const to = fs.Buffer.readFrom(log.dev, log.start + tail + 1);
         defer to.release();
-        const from = Buffer.readFrom(
+        const from = fs.Buffer.readFrom(
             log.dev,
             log.header.block[tail],
         );
         defer from.release();
 
-        memMove(&to.data, &from.data, fs.block_size);
+        utils.memMove(&to.data, &from.data, fs.block_size);
         to.writeBack(); // write the log
     }
 }
@@ -209,7 +208,7 @@ fn commit() void {
 ///   modify bp->data[]
 ///   log_write(bp)
 ///   brelse(bp)
-pub fn write(buf: *Buffer) void {
+pub fn write(buf: *fs.Buffer) void {
     log.lock.acquire();
     defer log.lock.release();
 
