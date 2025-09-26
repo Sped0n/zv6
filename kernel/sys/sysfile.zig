@@ -10,7 +10,7 @@ const printf = @import("../printf.zig").printf;
 const elf = @import("../process/elf.zig");
 const Process = @import("../process/Process.zig");
 const riscv = @import("../riscv.zig");
-const sysutils = @import("sysutils.zig");
+const syscall = @import("syscall.zig");
 
 //
 // File-system system calls.
@@ -19,6 +19,8 @@ const sysutils = @import("sysutils.zig");
 //
 
 const Error = error{
+    BadFileDescriptor,
+    TooManyOpenFiles,
     TryToLinkDirectory,
     SameDeviceRequired,
     TryToUnlinkDots,
@@ -33,21 +35,34 @@ const Error = error{
     ArgcOverflow,
 };
 
+fn reserveFileDescriptor(file: *fs.File) !usize {
+    const proc = try Process.current();
+
+    for (&proc.ofiles, 0..) |*f, fd| {
+        if (f.* == null) {
+            f.* = file;
+            return fd;
+        }
+    }
+
+    return Error.TooManyOpenFiles;
+}
+
 pub fn dup() !u64 {
     var file: *fs.File = undefined;
-    try sysutils.resolveOpenFileFromArgument(0, null, &file);
+    try syscall.argument.asOpenedFile(0, null, &file);
 
-    const fd = try sysutils.reserveFileDescriptor(file);
+    const fd = try reserveFileDescriptor(file);
     _ = file.dup();
     return @intCast(fd);
 }
 
 pub fn read() !u64 {
     var file: *fs.File = undefined;
-    try sysutils.resolveOpenFileFromArgument(0, null, &file);
+    try syscall.argument.asOpenedFile(0, null, &file);
 
-    const addr: u64 = sysutils.syscallArgument(u64, 1);
-    const len: u32 = sysutils.syscallArgument(u32, 2);
+    const addr = syscall.argument.as(u64, 1);
+    const len = syscall.argument.as(u32, 2);
 
     return @intCast(try file.read(
         addr,
@@ -57,10 +72,10 @@ pub fn read() !u64 {
 
 pub fn write() !u64 {
     var file: *fs.File = undefined;
-    try sysutils.resolveOpenFileFromArgument(0, null, &file);
+    try syscall.argument.asOpenedFile(0, null, &file);
 
-    const addr: u64 = sysutils.syscallArgument(u64, 1);
-    const len: u32 = sysutils.syscallArgument(u32, 2);
+    const addr = syscall.argument.as(u64, 1);
+    const len = syscall.argument.as(u32, 2);
 
     return @intCast(file.write(
         addr,
@@ -71,7 +86,7 @@ pub fn write() !u64 {
 pub fn close() !u64 {
     var file: *fs.File = undefined;
     var fd: usize = 0;
-    try sysutils.resolveOpenFileFromArgument(0, &fd, &file);
+    try syscall.argument.asOpenedFile(0, &fd, &file);
 
     const proc = try Process.current();
     proc.ofiles[fd] = null;
@@ -81,9 +96,9 @@ pub fn close() !u64 {
 
 pub fn fileStat() !u64 {
     var file: *fs.File = undefined;
-    try sysutils.resolveOpenFileFromArgument(0, null, &file);
+    try syscall.argument.asOpenedFile(0, null, &file);
 
-    const stat_addr: u64 = sysutils.syscallArgument(u64, 1); // user address to struct stat
+    const stat_addr: u64 = syscall.argument.as(u64, 1); // user address to struct stat
 
     try file.stat(stat_addr);
     return 0;
@@ -95,9 +110,9 @@ pub fn link() !u64 {
     var old_path_buffer: [param.max_path]u8 = undefined;
 
     const old_path_slice =
-        try sysutils.copyUserCStringFromArgument(0, &old_path_buffer);
+        try syscall.argument.asCString(0, &old_path_buffer);
     const new_path_slice =
-        try sysutils.copyUserCStringFromArgument(1, &new_path_buffer);
+        try syscall.argument.asCString(1, &new_path_buffer);
 
     fs.journal.batch.begin();
     defer fs.journal.batch.end();
@@ -174,7 +189,7 @@ fn isDirEmpty(dir_inode: *fs.Inode) bool {
 pub fn unlink() !u64 {
     var path_buffer: [param.max_path]u8 = undefined;
     const path_slice =
-        try sysutils.copyUserCStringFromArgument(0, &path_buffer);
+        try syscall.argument.asCString(0, &path_buffer);
 
     var name: [fs.dir_size]u8 = undefined;
 
@@ -320,8 +335,8 @@ fn create(path: []const u8, _type: fs.InodeType, major: u16, minor: u16) !*fs.In
 pub fn open() !u64 {
     var path_buffer: [param.max_path]u8 = undefined;
     const path_slice =
-        try sysutils.copyUserCStringFromArgument(0, &path_buffer);
-    const omode: u64 = sysutils.syscallArgument(u64, 1);
+        try syscall.argument.asCString(0, &path_buffer);
+    const omode: u64 = syscall.argument.as(u64, 1);
 
     fs.journal.batch.begin();
     defer fs.journal.batch.end();
@@ -353,7 +368,7 @@ pub fn open() !u64 {
     // Allocate file structure and file descriptor.
     const file = try fs.File.alloc();
     errdefer file.close();
-    const fd = try sysutils.reserveFileDescriptor(file);
+    const fd = try reserveFileDescriptor(file);
 
     // Initialize file structure.
     if (inode.dinode.type == .device) {
@@ -378,7 +393,7 @@ pub fn open() !u64 {
 pub fn mkdir() !u64 {
     var path_buffer: [param.max_path]u8 = undefined;
     const path_slice =
-        try sysutils.copyUserCStringFromArgument(0, &path_buffer);
+        try syscall.argument.asCString(0, &path_buffer);
 
     fs.journal.batch.begin();
     defer fs.journal.batch.end();
@@ -391,9 +406,10 @@ pub fn mkdir() !u64 {
 pub fn mknod() !u64 {
     var path_buffer: [param.max_path]u8 = undefined;
     const path_slice =
-        try sysutils.copyUserCStringFromArgument(0, &path_buffer);
-    const major: u16 = sysutils.syscallArgument(u16, 1);
-    const minor: u16 = sysutils.syscallArgument(u16, 2);
+        try syscall.argument.asCString(0, &path_buffer);
+
+    const major: u16 = syscall.argument.as(u16, 1);
+    const minor: u16 = syscall.argument.as(u16, 2);
 
     fs.journal.batch.begin();
     defer fs.journal.batch.end();
@@ -411,7 +427,7 @@ pub fn mknod() !u64 {
 pub fn chdir() !u64 {
     var path_buffer: [param.max_path]u8 = undefined;
     const path_slice =
-        try sysutils.copyUserCStringFromArgument(0, &path_buffer);
+        try syscall.argument.asCString(0, &path_buffer);
 
     const proc = try Process.current();
     assert(proc.cwd != null, @src());
@@ -440,36 +456,44 @@ pub fn chdir() !u64 {
 
 pub fn exec() !u64 {
     var path_buffer: [param.max_path]u8 = undefined;
-    const path_slice =
-        try sysutils.copyUserCStringFromArgument(0, &path_buffer);
+    const path_slice = try syscall.argument.asCString(0, &path_buffer);
 
-    const uargv: u64 = sysutils.syscallArgument(u64, 1);
+    const uargv: u64 = syscall.argument.as(u64, 1);
 
-    var argv = [_]?kmem.Page{null} ** param.max_arg;
-    defer for (0..param.max_arg) |j| {
-        if (argv[j]) |page| {
-            kmem.free(page);
-        } else break;
-    };
+    var argv = [_]kmem.Page{undefined} ** param.max_arg;
+    var argc: usize = 0;
 
-    var i: usize = 0;
-    while (true) : (i += 1) {
-        if (i >= argv.len) {
-            return Error.ArgcOverflow;
+    defer {
+        var j = argc;
+        while (j > 0) {
+            j -= 1;
+            kmem.free(argv[j]);
         }
-        const uarg =
-            try sysutils.copyU64FromCurrentProcess(uargv + @sizeOf(u64) * i);
-        if (uarg == 0) break;
-
-        argv[i] = try kmem.alloc();
-        _ = try sysutils.copyCStringFromCurrentProcess(uarg, argv[i].?);
     }
 
-    return try elf.exec(path_slice, argv[0..i]);
+    while (true) {
+        if (argc >= argv.len) {
+            return Error.ArgcOverflow;
+        }
+
+        const uarg =
+            try syscall.helpers.copyU64FromCurrentProcess(uargv + @sizeOf(u64) * argc);
+        if (uarg == 0) break;
+
+        const page = try kmem.alloc();
+        errdefer kmem.free(page);
+
+        _ = try syscall.helpers.copyCStringFromCurrentProcess(uarg, page);
+
+        argv[argc] = page;
+        argc += 1;
+    }
+
+    return try elf.exec(path_slice, argv[0..argc]);
 }
 
 pub fn pipe() !u64 {
-    const fd_array: u64 = sysutils.syscallArgument(u64, 0);
+    const fd_array: u64 = syscall.argument.as(u64, 0);
 
     const proc = try Process.current();
     assert(proc.page_table != null, @src());
@@ -480,9 +504,9 @@ pub fn pipe() !u64 {
     errdefer read_file.close();
     errdefer write_file.close();
 
-    const fd0: u32 = @intCast(try sysutils.reserveFileDescriptor(read_file));
+    const fd0: u32 = @intCast(try reserveFileDescriptor(read_file));
     errdefer proc.ofiles[fd0] = null;
-    const fd1: u32 = @intCast(try sysutils.reserveFileDescriptor(write_file));
+    const fd1: u32 = @intCast(try reserveFileDescriptor(write_file));
     errdefer proc.ofiles[fd1] = null;
 
     try vm.uvm.copyFromKernel(

@@ -9,8 +9,121 @@ const printf = @import("../printf.zig").printf;
 const Process = @import("../process/Process.zig");
 const sysfile = @import("sysfile.zig");
 const sysproc = @import("sysproc.zig");
+const fs = @import("../fs/fs.zig");
+const param = @import("../param.zig");
 
-pub const SysCallID = enum(u64) {
+pub const helpers = struct {
+    pub const Error = error{
+        AddressOverflow,
+    };
+
+    /// Fetch the u64 at addr from the current process.
+    pub fn copyU64FromCurrentProcess(addr: u64) !u64 {
+        const proc = Process.current() catch panic(
+            @src(),
+            "current proc is null",
+            .{},
+        );
+        assert(proc.page_table != null, @src());
+        if (addr >= proc.size or
+            addr + @sizeOf(u64) > proc.size) return Error.AddressOverflow;
+        var tmp: u64 = 0;
+        try vm.kvm.copyFromUser(
+            proc.page_table.?,
+            @ptrCast(&tmp),
+            addr,
+            @sizeOf(u64),
+        );
+        return tmp;
+    }
+
+    /// Fetch the null-terminated string at addr from the current process.
+    pub fn copyCStringFromCurrentProcess(addr: u64, buffer: []u8) ![]const u8 {
+        const proc = Process.current() catch panic(
+            @src(),
+            "current proc is null",
+            .{},
+        );
+        assert(proc.page_table != null, @src());
+        return try vm.kvm.copyCStringFromUser(
+            proc.page_table.?,
+            buffer,
+            addr,
+        );
+    }
+};
+
+pub const argument = struct {
+    pub const Error = error{
+        BadFileDescriptor,
+        TooManyOpenFiles,
+    };
+
+    /// Fetch the system call argument n and return it as T (i32/u32/i64/u64, etc.).
+    pub fn as(comptime T: type, n: usize) T {
+        const proc = Process.current() catch panic(@src(), "current proc is null", .{});
+        const trap_frame = proc.trap_frame.?;
+
+        const raw: u64 = switch (n) {
+            0 => trap_frame.a0,
+            1 => trap_frame.a1,
+            2 => trap_frame.a2,
+            3 => trap_frame.a3,
+            4 => trap_frame.a4,
+            5 => trap_frame.a5,
+            else => panic(@src(), "unknown arg index {d}", .{n}),
+        };
+
+        // T must be an integer type up to 64 bits
+        comptime {
+            const info = @typeInfo(T);
+            if (info != .int) @compileError("argRaw(T,n): T must be an integer type");
+            if (info.int.bits > 64) @compileError("argRaw(T,n): T wider than 64 bits");
+        }
+
+        const int_info = @typeInfo(T).int;
+
+        if (int_info.bits == 64) {
+            if (int_info.signedness == .signed) {
+                return @bitCast(raw); // u64 -> i64
+            } else {
+                return raw; // u64 -> u64
+            }
+        } else {
+            if (int_info.signedness == .signed) {
+                return @truncate(@as(i64, @bitCast(raw))); // u64 -> i64 -> i32
+            } else {
+                return @truncate(raw); // u64 -> u32
+            }
+        }
+    }
+
+    /// Fetch the nth word-sized system call argument as a null-terminated string.
+    /// Copies into buf, at most max.
+    pub fn asCString(n: usize, buffer: []u8) ![]const u8 {
+        const addr: u64 = as(u64, n);
+        return helpers.copyCStringFromCurrentProcess(addr, buffer);
+    }
+
+    /// Fetch the nth word-sized system call argument as a file descriptor
+    pub fn asOpenedFile(n: usize, out_fd: ?*usize, out_file: ?**fs.File) !void {
+        const fd: u64 = as(u64, n);
+        const proc = Process.current() catch panic(
+            @src(),
+            "current proc is null",
+            .{},
+        );
+        if (fd >= proc.ofiles.len) return Error.BadFileDescriptor;
+        if (proc.ofiles[fd]) |f| {
+            if (out_fd) |ofd| ofd.* = fd;
+            if (out_file) |of| of.* = f;
+        } else {
+            return Error.BadFileDescriptor;
+        }
+    }
+};
+
+pub const SyscallID = enum(u64) {
     fork = 1,
     exit = 2,
     wait = 3,
@@ -45,7 +158,7 @@ pub fn syscall() !void {
     errdefer trap_frame.a0 = @bitCast(@as(i64, -1));
 
     const syscall_id = meta.intToEnum(
-        SysCallID,
+        SyscallID,
         trap_frame.a7,
     ) catch |e| {
         printf(
