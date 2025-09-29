@@ -50,12 +50,12 @@ pid: u32, // Process ID
 parent: ?*Self, // Parent process
 
 // these are private to the process, so p->lock need not be held.
-kstack: u64, // Virtual address of kernel stack
+kernel_stack_virtual_addr: u64, // Virtual address of kernel stack
 size: u64, // Size of process memory (bytes)
 page_table: ?riscv.PageTable, // User page table
 trap_frame: ?*TrapFrame, // data page for trampoline.S
 context: Context, // swtch() here to run process
-ofiles: [param.n_ofile]?*fs.File, // Open files
+opened_files: [param.n_ofile]?*fs.File, // Opened files
 cwd: ?*fs.Inode, // Current directory
 name: [16]u8, // Process name (debugging)
 
@@ -67,12 +67,12 @@ pub var procs: [param.n_proc]Self = [_]Self{Self{
     .exit_state = 0,
     .pid = 0,
     .parent = null,
-    .kstack = 0,
+    .kernel_stack_virtual_addr = 0,
     .size = 0,
     .page_table = null,
     .trap_frame = null,
     .context = undefined,
-    .ofiles = undefined,
+    .opened_files = [_]?*fs.File{null} ** param.n_ofile,
     .cwd = null,
     .name = [_]u8{0} ** 16,
 }} ** param.n_proc;
@@ -142,7 +142,7 @@ pub fn init() void {
     wait_lock.init("wait_lock");
     for (&procs, 0..) |*proc, i| {
         proc.lock.init("proc");
-        proc.kstack = memlayout.kernelStack(i);
+        proc.kernel_stack_virtual_addr = memlayout.kernelStack(i);
     }
 }
 
@@ -211,7 +211,7 @@ fn create() !*Self {
         @ptrCast(&proc.context),
     )[0..@sizeOf(@TypeOf(proc.context))], 0);
     proc.context.ra = @intFromPtr(&forkRet);
-    proc.context.sp = proc.kstack + 2 * riscv.pg_size;
+    proc.context.sp = proc.kernel_stack_virtual_addr + 2 * riscv.pg_size; // stack top
 
     return proc;
 }
@@ -376,9 +376,9 @@ pub fn fork() !u32 {
         new_proc.trap_frame.?.a0 = 0;
 
         // Increment reference counts on open file descriptors.
-        for (0..param.n_ofile) |i| {
-            if (proc.ofiles[i]) |ofile| {
-                new_proc.ofiles[i] = ofile.dup();
+        for (&proc.opened_files, 0..) |*opened_file, fd| {
+            if (opened_file.*) |of| {
+                new_proc.opened_files[fd] = of.dup();
             }
         }
         new_proc.cwd = proc.cwd.?.dup();
@@ -432,10 +432,10 @@ pub fn exit(status: i32) void {
 
     if (proc == init_proc) panic(@src(), "init exiting", .{});
 
-    for (0..param.n_ofile) |fd| {
-        if (proc.ofiles[fd]) |ofile| {
-            ofile.close();
-            proc.ofiles[fd] = null;
+    for (&proc.opened_files) |*opened_file| {
+        if (opened_file.*) |of| {
+            of.close();
+            opened_file.* = null;
         }
     }
 

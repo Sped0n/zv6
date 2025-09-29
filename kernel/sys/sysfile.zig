@@ -38,9 +38,9 @@ const Error = error{
 fn reserveFileDescriptor(file: *fs.File) !usize {
     const proc = try Process.current();
 
-    for (&proc.ofiles, 0..) |*f, fd| {
-        if (f.* == null) {
-            f.* = file;
+    for (&proc.opened_files, 0..) |*opened_file, fd| {
+        if (opened_file.* == null) {
+            opened_file.* = file;
             return fd;
         }
     }
@@ -89,7 +89,7 @@ pub fn close() !u64 {
     try syscall.argument.asOpenedFile(0, &fd, &file);
 
     const proc = try Process.current();
-    proc.ofiles[fd] = null;
+    proc.opened_files[fd] = null;
     file.close();
     return 0;
 }
@@ -505,9 +505,9 @@ pub fn pipe() !u64 {
     errdefer write_file.close();
 
     const fd0: u32 = @intCast(try reserveFileDescriptor(read_file));
-    errdefer proc.ofiles[fd0] = null;
+    errdefer proc.opened_files[fd0] = null;
     const fd1: u32 = @intCast(try reserveFileDescriptor(write_file));
-    errdefer proc.ofiles[fd1] = null;
+    errdefer proc.opened_files[fd1] = null;
 
     try vm.uvm.copyFromKernel(
         proc.page_table.?,
