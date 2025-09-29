@@ -26,7 +26,7 @@ pub const helpers = struct {
         );
         assert(proc.page_table != null, @src());
         if (addr >= proc.size or
-            addr + @sizeOf(u64) > proc.size) return Error.AddressOverflow;
+            (addr + @sizeOf(u64)) > proc.size) return Error.AddressOverflow;
         var tmp: u64 = 0;
         try vm.kvm.copyFromUser(
             proc.page_table.?,
@@ -113,8 +113,8 @@ pub const argument = struct {
             "current proc is null",
             .{},
         );
-        if (fd >= proc.ofiles.len) return Error.BadFileDescriptor;
-        if (proc.ofiles[fd]) |f| {
+        if (fd >= proc.opened_files.len) return Error.BadFileDescriptor;
+        if (proc.opened_files[fd]) |f| {
             if (out_fd) |ofd| ofd.* = fd;
             if (out_file) |of| of.* = f;
         } else {
