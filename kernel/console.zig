@@ -1,9 +1,9 @@
 const std = @import("std");
 
-const File = @import("../fs/File.zig");
-const SpinLock = @import("../lock/SpinLock.zig");
-const Process = @import("../process/Process.zig");
-const uart = @import("uart.zig");
+const uart = @import("driver/uart.zig");
+const fs = @import("fs/fs.zig");
+const SpinLock = @import("lock/SpinLock.zig");
+const Process = @import("process/Process.zig");
 
 const backspace = 0x08;
 const delete = 0x7f;
@@ -173,7 +173,7 @@ pub fn init() void {
 
     // connect read and write system calls
     // to console.read and console.write.
-    File.device_switches[@intFromEnum(File.DeviceSwitchID.console)] = .{
+    fs.File.device_switches[@intFromEnum(fs.File.DeviceSwitchID.console)] = .{
         .read = read,
         .write = write,
     };

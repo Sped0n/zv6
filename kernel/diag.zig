@@ -1,11 +1,11 @@
 const std = @import("std");
 
-const console = @import("driver/console.zig");
+const console = @import("console.zig");
 const SpinLock = @import("lock/SpinLock.zig");
 const Cpu = @import("process/Cpu.zig");
 
 var lock: SpinLock = undefined;
-var lock_allow_to_use = true;
+var panicking: bool = false;
 var panicked: bool = false;
 
 pub fn logFn(
@@ -27,7 +27,7 @@ pub fn logFn(
         break :b std.fmt.comptimePrint("{s: <7}-| ", .{@tagName(scope)[0..7]});
     };
 
-    if (!lock_allow_to_use) {
+    if (panicking) {
         console.writer.print(
             level_str ++ " " ++ trimmed_scope ++ fmt ++ "\n",
             args,
@@ -49,10 +49,13 @@ pub fn panicFn(msg: []const u8, first_trace_addr: ?usize) noreturn {
     logFn(.err, .diag, "CPU {d} panicked: {s}", .{ cpu_id, msg });
 
     {
+        defer panicked = true;
+
         lock.acquire();
         defer lock.release();
 
-        lock_allow_to_use = false;
+        panicking = true;
+        defer panicking = false;
 
         logFn(.err, .diag, "CPU {d} panicked: {s}", .{ cpu_id, msg });
         logFn(.err, .diag, "Stack trace:", .{});
@@ -62,8 +65,6 @@ pub fn panicFn(msg: []const u8, first_trace_addr: ?usize) noreturn {
                 logFn(.err, .diag, "  0x{x}", .{addr});
             }
         }
-
-        panicked = true;
     }
 
     while (true) {}

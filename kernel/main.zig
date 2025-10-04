@@ -1,8 +1,8 @@
 const std = @import("std");
 const builtin = std.builtin;
 
+const console = @import("console.zig");
 const diag = @import("diag.zig");
-const console = @import("driver/console.zig");
 const plic = @import("driver/plic.zig");
 const virtio_disk = @import("driver/virtio_disk.zig");
 const fs = @import("fs/fs.zig");
@@ -13,7 +13,6 @@ const Process = @import("process/Process.zig");
 const scheduler = @import("process/scheduler.zig");
 const riscv = @import("riscv.zig");
 const trap = @import("trap.zig");
-const assert = @import("diag.zig").assert;
 
 const log = std.log.scoped(.main);
 
