@@ -3,15 +3,13 @@ const builtin = std.builtin;
 const mem = std.mem;
 const math = std.math;
 
+const assert = @import("../diag.zig").assert;
 const fs = @import("../fs/fs.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
 const memlayout = @import("../memlayout.zig");
 const kmem = @import("../memory/kmem.zig");
 const vm = @import("../memory/vm.zig");
 const param = @import("../param.zig");
-const assert = @import("../printf.zig").assert;
-const printf = @import("../printf.zig").printf;
-const panic = @import("../printf.zig").panic;
 const riscv = @import("../riscv.zig");
 const trap = @import("../trap.zig");
 const utils = @import("../utils.zig");
@@ -19,6 +17,8 @@ const Context = @import("context.zig").Context;
 const Cpu = @import("Cpu.zig");
 const sched = @import("scheduler.zig").sched;
 const TrapFrame = @import("trapframe.zig").TrapFrame;
+
+const log = std.log.scoped(.Process);
 
 const initcode = @embedFile("initcode");
 
@@ -171,7 +171,7 @@ pub fn allocPid() u32 {
     defer pid_lock.release();
 
     const pid = nextpid;
-    assert(pid != math.maxInt(u32), @src());
+    assert(pid != math.maxInt(u32));
     nextpid += 1;
     return pid;
 }
@@ -280,11 +280,7 @@ pub fn freePageTable(page_table: riscv.PageTable, size: u64) void {
 
 /// Set up first user process.
 pub fn userInit() void {
-    const proc = Self.create() catch |e| panic(
-        @src(),
-        "Process.create failed with {s}",
-        .{@errorName(e)},
-    );
+    const proc = Self.create() catch unreachable;
     init_proc = proc;
 
     // non nullable ensured by create()
@@ -301,11 +297,7 @@ pub fn userInit() void {
     trap_frame.sp = riscv.pg_size; // user stack pointer
 
     utils.safeStrCopy(&proc.name, "initcode");
-    proc.cwd = fs.path.toInode("/") catch |e| panic(
-        @src(),
-        "path.toInode failed with {s}",
-        .{@errorName(e)},
-    );
+    proc.cwd = fs.path.toInode("/") catch unreachable;
 
     proc.state = .runnable;
 
@@ -314,13 +306,8 @@ pub fn userInit() void {
 
 /// Grow or shrink user memory by n bytes.
 pub fn growCurrent(n: i32) !void {
-    const proc = current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
-
-    assert(proc.page_table != null, @src());
+    const proc = current() catch unreachable;
+    assert(proc.page_table != null);
 
     var size = proc.size;
     if (n > 0) {
@@ -344,13 +331,9 @@ pub fn growCurrent(n: i32) !void {
 /// Create a new process, copying the parent.
 /// Sets up child kernel stack to return as if from fork() system call.
 pub fn fork() !u32 {
-    const proc = current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
-    assert(proc.page_table != null, @src());
-    assert(proc.cwd != null, @src());
+    const proc = current() catch unreachable;
+    assert(proc.page_table != null);
+    assert(proc.cwd != null);
 
     var new_proc: *Self = undefined;
     var pid: u32 = 0;
@@ -422,15 +405,10 @@ pub fn reParent(self: *Self) void {
 /// An exited process remains in the zombie state
 /// until its parent calls wait().
 pub fn exit(status: i32) void {
-    const proc = current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
-    assert(proc.parent != null, @src());
-    assert(proc.cwd != null, @src());
-
-    if (proc == init_proc) panic(@src(), "init exiting", .{});
+    const proc = current() catch unreachable;
+    assert(proc.parent != null);
+    assert(proc.cwd != null);
+    assert(proc != init_proc);
 
     for (&proc.opened_files) |*opened_file| {
         if (opened_file.*) |of| {
@@ -466,18 +444,14 @@ pub fn exit(status: i32) void {
 
     // Jump into the scheduler, never to return.
     sched();
-    panic(@src(), "zombie exit", .{});
+    @panic("Zombie exit");
 }
 
 // Wait for a child process to exit and return its pid.
 // Return null if this process has no children.
 pub fn wait(addr: u64) !u32 {
-    const curr_proc = current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
-    assert(curr_proc.page_table != null, @src());
+    const curr_proc = current() catch unreachable;
+    assert(curr_proc.page_table != null);
 
     wait_lock.acquire();
     defer wait_lock.release();
@@ -521,11 +495,7 @@ pub fn wait(addr: u64) !u32 {
 
 /// Give up the CPU for one scheduling round.
 pub fn yield() void {
-    const proc = current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
+    const proc = current() catch unreachable;
 
     proc.lock.acquire();
     defer proc.lock.release();
@@ -541,11 +511,7 @@ pub fn forkRet() callconv(.c) void {
         var first: bool = true;
     };
 
-    const proc = current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
+    const proc = current() catch unreachable;
 
     // Still holding p->lock from scheduler.
     proc.lock.release();
@@ -575,11 +541,7 @@ pub fn forkRet() callconv(.c) void {
 /// Atomically release lock and sleep on chan.
 /// Reacquires lock when awakened.
 pub fn sleep(chan_addr: u64, lock: *SpinLock) void {
-    const proc = current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
+    const proc = current() catch unreachable;
 
     proc.lock.acquire(); // DOC: sleeplock 1
     lock.release();
@@ -651,14 +613,10 @@ pub fn eitherCopyOut(
     src: [*]const u8,
     len: u64,
 ) !void {
-    const proc = current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
+    const proc = current() catch unreachable;
 
     if (is_user_dst) {
-        assert(proc.page_table != null, @src());
+        assert(proc.page_table != null);
         try vm.uvm.copyFromKernel(
             proc.page_table.?,
             dst_addr,
@@ -674,14 +632,10 @@ pub fn eitherCopyOut(
 /// depending on usr_src.
 /// Returns true on success, false on error.
 pub fn eitherCopyIn(dst: [*]u8, is_user_src: bool, src_addr: u64, len: u64) !void {
-    const proc = current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
+    const proc = current() catch unreachable;
 
     if (is_user_src) {
-        assert(proc.page_table != null, @src());
+        assert(proc.page_table != null);
         try vm.kvm.copyFromUser(
             proc.page_table.?,
             dst,
@@ -697,9 +651,9 @@ pub fn eitherCopyIn(dst: [*]u8, is_user_src: bool, src_addr: u64, len: u64) !voi
 /// Runs when user types ^P on console.
 /// No lock to avoid wedging a stuck machine further.
 pub fn dump() void {
-    printf("\n", .{});
+    log.info("=== Process dump ===", .{});
     for (&procs) |*proc| {
         if (proc.state == .unused) continue;
-        printf("{d: <7} {s: ^10} {s}\n", .{ proc.pid, @tagName(proc.state), &proc.name });
+        log.info("{d: <7} {s: ^10} {s}\n", .{ proc.pid, @tagName(proc.state), &proc.name });
     }
 }

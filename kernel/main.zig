@@ -1,25 +1,29 @@
-const builtin = @import("std").builtin;
+const std = @import("std");
+const builtin = std.builtin;
 
+const diag = @import("diag.zig");
 const console = @import("driver/console.zig");
 const plic = @import("driver/plic.zig");
 const virtio_disk = @import("driver/virtio_disk.zig");
 const fs = @import("fs/fs.zig");
 const kmem = @import("memory/kmem.zig");
 const vm = @import("memory/vm.zig");
-const printf = @import("printf.zig");
 const Cpu = @import("process/Cpu.zig");
 const Process = @import("process/Process.zig");
 const scheduler = @import("process/scheduler.zig");
 const riscv = @import("riscv.zig");
 const trap = @import("trap.zig");
+const assert = @import("diag.zig").assert;
+
+const log = std.log.scoped(.main);
 
 var started = false;
 
 pub fn main() callconv(.c) void {
-    if (Cpu.id() == 0) {
+    const cpu_id = Cpu.id();
+    if (cpu_id == 0) {
         console.init();
-        printf.init();
-        printf.printf("{{zv6}} {s}\n", .{"hello world"});
+        diag.init();
         kmem.init();
         vm.kvm.init();
         vm.kvm.initHardwareThread();
@@ -34,7 +38,7 @@ pub fn main() callconv(.c) void {
         virtio_disk.init();
         Process.userInit();
 
-        printf.printf("hart 0 init\n", .{});
+        log.info("Hardware thread {d} started", .{cpu_id});
 
         @atomicStore(
             bool,
@@ -51,8 +55,7 @@ pub fn main() callconv(.c) void {
         vm.kvm.initHardwareThread();
         trap.initHardwareThread();
         plic.initHardwareThread();
-        const cpuid: u8 = @intCast(Cpu.id());
-        printf.printf("hart {d} init\n", .{cpuid});
+        log.info("Hardware thread {d} started", .{cpu_id});
     }
 
     scheduler.scheduler();

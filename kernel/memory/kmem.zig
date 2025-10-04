@@ -1,7 +1,6 @@
+const assert = @import("../diag.zig").assert;
 const SpinLock = @import("../lock/SpinLock.zig");
 const memlayout = @import("../memlayout.zig");
-const panic = @import("../printf.zig").panic;
-const printf = @import("../printf.zig").printf;
 const riscv = @import("../riscv.zig");
 
 const end = @extern(*u8, .{ .name = "end" });
@@ -40,19 +39,11 @@ fn freeRange(start_addr: u64, end_addr: u64) void {
 pub fn free(page: Page) void {
     const page_addr: u64 = @intFromPtr(page);
 
-    // not aligned.
-    if (page_addr % riscv.pg_size != 0) {
-        panic(@src(), "addr 0x{x} not aligned", .{page_addr});
-        return;
-    }
+    // not aligned
+    assert(page_addr % riscv.pg_size == 0);
 
-    if (page_addr < @as(
-        u64,
-        @intFromPtr(end),
-    ) or page_addr >= memlayout.phy_stop) {
-        panic(@src(), "out of range", .{});
-        return;
-    }
+    // out of range
+    assert(page_addr >= @intFromPtr(end) and page_addr < memlayout.phy_stop);
 
     // fill with junk to catch dangling refs.
     @memset(page, 1);

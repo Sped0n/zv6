@@ -1,8 +1,8 @@
 const std = @import("std");
 
+const diag = @import("../diag.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
 const memlayout = @import("../memlayout.zig");
-const printf = @import("../printf.zig");
 const Process = @import("../process/Process.zig");
 const console = @import("console.zig");
 
@@ -91,7 +91,7 @@ pub fn putChar(char: u8) void {
     tx_lock.acquire();
     defer tx_lock.release();
 
-    printf.checkPanicked();
+    diag.checkPanicked();
 
     while (tx_w == tx_r + tx_buffer_size) {
         // buffer is full.
@@ -111,7 +111,7 @@ pub fn putCharSync(char: u8) void {
     SpinLock.pushOff();
     defer SpinLock.popOff();
 
-    printf.checkPanicked();
+    diag.checkPanicked();
 
     // wait for Transmit Holding Empty to be set in LSR.
     while ((readReg(@as(u64, lsr)) & lsr_tx_idle) == 0) {}

@@ -1,3 +1,5 @@
+const std = @import("std");
+
 const File = @import("../fs/File.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
 const Process = @import("../process/Process.zig");
@@ -12,6 +14,11 @@ var buffer: [buffer_size]u8 = [_]u8{0} ** buffer_size;
 var read_index: u32 = 0;
 var write_index: u32 = 0;
 var edit_index: u32 = 0;
+
+pub var writer: std.Io.Writer = .{
+    .vtable = &.{ .drain = drain },
+    .buffer = &.{}, // no buffer
+};
 
 inline fn ctrl(comptime x: u8) u8 {
     return x - '@';
@@ -150,6 +157,14 @@ pub fn intr(char: u8) void {
             }
         },
     }
+}
+
+/// Io.Writer.drain implementation for the console
+fn drain(_: *std.Io.Writer, data: []const []const u8, _: usize) std.Io.Writer.Error!usize {
+    // data.len > 0 is guaranteed by the interface
+    const seg = data[0];
+    for (seg) |b| putChar(b);
+    return seg.len;
 }
 
 pub fn init() void {

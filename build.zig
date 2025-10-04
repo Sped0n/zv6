@@ -96,6 +96,7 @@ const user_progs = [_][]const u8{
 
 pub fn build(b: *std.Build) void {
     const keep_fsimg = b.option(bool, "keep-fsimg", "Keep the existing fs.img instead of recreating it") orelse false;
+    const chosen_log_level = b.option([]const u8, "log-level", "Set kernel log level (error|warn|info|debug)") orelse "info";
 
     const optimize = b.standardOptimizeOption(.{});
     const native = b.standardTargetOptions(.{});
@@ -322,6 +323,10 @@ pub fn build(b: *std.Build) void {
     kernel_module.addAnonymousImport("initcode", .{
         .root_source_file = initcode_bin.getOutput(),
     });
+
+    const kernel_build_options = b.addOptions();
+    kernel_build_options.addOption([]const u8, "log_level", chosen_log_level);
+    kernel_module.addOptions("build_options", kernel_build_options);
 
     {
         const kernel = b.addExecutable(.{

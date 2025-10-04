@@ -1,6 +1,6 @@
+const assert = @import("../diag.zig").assert;
 const memlayout = @import("../memlayout.zig");
 const kmem = @import("../memory/kmem.zig");
-const panic = @import("../printf.zig").panic;
 const Process = @import("../process/Process.zig");
 const riscv = @import("../riscv.zig");
 const utils = @import("../utils.zig");
@@ -40,11 +40,7 @@ pub fn walk(
     virt_addr: u64,
     alloc: bool,
 ) !*riscv.Pte {
-    if (virt_addr > riscv.max_va) panic(
-        @src(),
-        "va({x}) greater than maxva",
-        .{virt_addr},
-    );
+    assert(virt_addr <= riscv.max_va);
 
     var current_page_table = page_table;
 
@@ -106,23 +102,9 @@ pub fn mapPages(
     phy_addr: u64,
     permission: u64,
 ) !void {
-    if ((virt_addr % riscv.pg_size) != 0) panic(
-        @src(),
-        "va({x}) not aligned",
-        .{virt_addr},
-    );
-
-    if ((size % riscv.pg_size) != 0) panic(
-        @src(),
-        "size({d}) not aligned",
-        .{size},
-    );
-
-    if (size == 0) panic(
-        @src(),
-        "size is 0",
-        .{},
-    );
+    assert(virt_addr % riscv.pg_size == 0);
+    assert(size % riscv.pg_size == 0);
+    assert(size > 0);
 
     var virt_anchor: u64 = virt_addr;
     var phy_anchor: u64 = phy_addr;
@@ -138,13 +120,8 @@ pub fn mapPages(
             true,
         );
 
-        if (pte_ptr.* & @intFromEnum(riscv.PteFlag.v) != 0) {
-            panic(
-                @src(),
-                "remap, current pte flag is {b}",
-                .{riscv.pteFlags(pte_ptr.*)},
-            );
-        }
+        // try to remap existing page
+        assert(pte_ptr.* & @intFromEnum(riscv.PteFlag.v) == 0);
 
         pte_ptr.* = riscv.pteFromPa(
             phy_anchor,
@@ -170,11 +147,8 @@ pub fn freeWalk(page_table: riscv.PageTable) void {
             freeWalk(child);
             page_table[i] = 0;
         } else if (pte & v_permission != 0) {
-            panic(
-                @src(),
-                "leaf, current pte flag is {b}",
-                .{riscv.pteFlags(pte)},
-            );
+            // all leaf mappings must be removed before calling freeWalk
+            unreachable;
         }
     }
     kmem.free(@ptrCast(@alignCast(page_table)));
@@ -261,11 +235,7 @@ pub const kvm = struct {
 
     /// Initialize the one kernel_page_table
     pub fn init() void {
-        kernel_page_table = kvm.make() catch |e| panic(
-            @src(),
-            "kvmMake failed with {s}",
-            .{@errorName(e)},
-        );
+        kernel_page_table = kvm.make() catch unreachable;
     }
 
     /// Switch h/w page table register to the kernel's page table,
@@ -296,11 +266,7 @@ pub const kvm = struct {
             size,
             phy_addr,
             permission,
-        ) catch |e| panic(
-            @src(),
-            "mapPages failed with {s}",
-            .{@errorName(e)},
-        );
+        ) catch unreachable;
     }
 
     /// Copy from user to kernel.
@@ -397,11 +363,7 @@ pub const uvm = struct {
         n_pages: u64,
         do_free: bool,
     ) void {
-        if (virt_addr % riscv.pg_size != 0) panic(
-            @src(),
-            "va({x}) not aligned",
-            .{virt_addr},
-        );
+        assert(virt_addr % riscv.pg_size == 0);
 
         var virt_anchor = virt_addr;
         const virt_last = virt_addr + n_pages * riscv.pg_size;
@@ -410,18 +372,16 @@ pub const uvm = struct {
                 page_table,
                 virt_anchor,
                 false,
-            ) catch |e| panic(
-                @src(),
-                "walk failed with {s}",
-                .{@errorName(e)},
-            );
+            ) catch unreachable;
 
-            if ((pte_ptr.* & @intFromEnum(
-                riscv.PteFlag.v,
-            )) == 0) panic(@src(), "not mapped", .{});
-            if (riscv.pteFlags(pte_ptr.*) == @intFromEnum(
-                riscv.PteFlag.v,
-            )) panic(@src(), "not a leaf", .{});
+            // not mapped
+            assert(
+                pte_ptr.* & @intFromEnum(riscv.PteFlag.v) != 0,
+            );
+            // not a leaf
+            assert(
+                riscv.pteFlags(pte_ptr.*) != @intFromEnum(riscv.PteFlag.v),
+            );
 
             if (do_free) {
                 const phy_addr = riscv.paFromPte(pte_ptr.*);
@@ -442,16 +402,9 @@ pub const uvm = struct {
     /// Load the user initcode into address 0 of pagetable,
     /// for the very first process.
     pub fn first(page_table: riscv.PageTable, src: []const u8) void {
-        if (src.len > riscv.pg_size) panic(
-            @src(),
-            "more than one page({d})",
-            .{src.len},
-        );
+        assert(src.len <= riscv.pg_size);
 
-        const page = kmem.alloc() catch {
-            panic(@src(), "kalloc failed", .{});
-            return;
-        };
+        const page = kmem.alloc() catch unreachable;
         errdefer kmem.free(page);
         @memset(page, 0);
 
@@ -466,14 +419,7 @@ pub const uvm = struct {
             riscv.pg_size,
             @intFromPtr(page),
             permission,
-        ) catch |e| {
-            panic(
-                @src(),
-                "mapPages failed with {s}",
-                .{@errorName(e)},
-            );
-            return e;
-        };
+        ) catch unreachable;
         utils.memMove(page, src.ptr, src.len);
     }
 
@@ -567,13 +513,11 @@ pub const uvm = struct {
                 from,
                 addr,
                 false,
-            ) catch panic(@src(), "pte should exist", .{})).*;
+            ) catch unreachable).*;
 
-            if (pte & @intFromEnum(riscv.PteFlag.v) == 0) panic(
-                @src(),
-                "page not present, current pte flag is {x}",
-                .{riscv.pteFlags(pte)},
-            );
+            // page not exist
+            assert(pte & @intFromEnum(riscv.PteFlag.v) != 0);
+
             const phy_addr = riscv.paFromPte(pte);
             const flags = riscv.pteFlags(pte);
 
@@ -610,11 +554,7 @@ pub const uvm = struct {
             page_table,
             virt_addr,
             false,
-        ) catch |e| panic(
-            @src(),
-            "walk failed with {s}",
-            .{@errorName(e)},
-        )).* &= ~@intFromEnum(riscv.PteFlag.u);
+        ) catch unreachable).* &= ~@intFromEnum(riscv.PteFlag.u);
     }
 
     /// Copy from kernel to user.

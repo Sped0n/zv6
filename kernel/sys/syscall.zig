@@ -2,15 +2,15 @@ const std = @import("std");
 const mem = std.mem;
 const meta = std.meta;
 
+const assert = @import("../diag.zig").assert;
+const fs = @import("../fs/fs.zig");
 const vm = @import("../memory/vm.zig");
-const panic = @import("../printf.zig").panic;
-const assert = @import("../printf.zig").assert;
-const printf = @import("../printf.zig").printf;
+const param = @import("../param.zig");
 const Process = @import("../process/Process.zig");
 const sysfile = @import("sysfile.zig");
 const sysproc = @import("sysproc.zig");
-const fs = @import("../fs/fs.zig");
-const param = @import("../param.zig");
+
+const log = std.log.scoped(.syscall);
 
 pub const helpers = struct {
     pub const Error = error{
@@ -19,12 +19,8 @@ pub const helpers = struct {
 
     /// Fetch the u64 at addr from the current process.
     pub fn copyU64FromCurrentProcess(addr: u64) !u64 {
-        const proc = Process.current() catch panic(
-            @src(),
-            "current proc is null",
-            .{},
-        );
-        assert(proc.page_table != null, @src());
+        const proc = Process.current() catch unreachable;
+        assert(proc.page_table != null);
         if (addr >= proc.size or
             (addr + @sizeOf(u64)) > proc.size) return Error.AddressOverflow;
         var tmp: u64 = 0;
@@ -39,12 +35,8 @@ pub const helpers = struct {
 
     /// Fetch the null-terminated string at addr from the current process.
     pub fn copyCStringFromCurrentProcess(addr: u64, buffer: []u8) ![]const u8 {
-        const proc = Process.current() catch panic(
-            @src(),
-            "current proc is null",
-            .{},
-        );
-        assert(proc.page_table != null, @src());
+        const proc = Process.current() catch unreachable;
+        assert(proc.page_table != null);
         return try vm.kvm.copyCStringFromUser(
             proc.page_table.?,
             buffer,
@@ -61,7 +53,7 @@ pub const argument = struct {
 
     /// Fetch the system call argument n and return it as T (i32/u32/i64/u64, etc.).
     pub fn as(comptime T: type, n: usize) T {
-        const proc = Process.current() catch panic(@src(), "current proc is null", .{});
+        const proc = Process.current() catch unreachable;
         const trap_frame = proc.trap_frame.?;
 
         const raw: u64 = switch (n) {
@@ -71,7 +63,7 @@ pub const argument = struct {
             3 => trap_frame.a3,
             4 => trap_frame.a4,
             5 => trap_frame.a5,
-            else => panic(@src(), "unknown arg index {d}", .{n}),
+            else => unreachable,
         };
 
         // T must be an integer type up to 64 bits
@@ -108,11 +100,7 @@ pub const argument = struct {
     /// Fetch the nth word-sized system call argument as a file descriptor
     pub fn asOpenedFile(n: usize, out_fd: ?*usize, out_file: ?**fs.File) !void {
         const fd: u64 = as(u64, n);
-        const proc = Process.current() catch panic(
-            @src(),
-            "current proc is null",
-            .{},
-        );
+        const proc = Process.current() catch unreachable;
         if (fd >= proc.opened_files.len) return Error.BadFileDescriptor;
         if (proc.opened_files[fd]) |f| {
             if (out_fd) |ofd| ofd.* = fd;
@@ -148,7 +136,7 @@ pub const SyscallID = enum(u64) {
 };
 
 pub fn syscall() !void {
-    const proc = Process.current() catch panic(
+    const proc = Process.current() catch unreachable(
         @src(),
         "current proc is null",
         .{},
@@ -161,17 +149,17 @@ pub fn syscall() !void {
         SyscallID,
         trap_frame.a7,
     ) catch |e| {
-        printf(
-            "{d} {s}: unknown syscall ID {d}\n",
+        log.err(
+            "{d} {s}: Unknown syscall ID {d}",
             .{ proc.pid, proc.name, trap_frame.a7 },
         );
         return e;
     };
 
-    // errdefer |e| printf(
-    //     "\nsyscall({s}) failed with {s}\n",
-    //     .{ std.enums.tagName(SysCallID, syscall_id) orelse "null", @errorName(e) },
-    // );
+    errdefer |e| log.debug(
+        "Syscall({s}) failed with {s}",
+        .{ std.enums.tagName(SyscallID, syscall_id) orelse "null", @errorName(e) },
+    );
 
     var tmp: u64 = 0;
     switch (syscall_id) {

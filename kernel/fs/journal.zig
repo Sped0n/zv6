@@ -1,7 +1,6 @@
 const SpinLock = @import("../lock/SpinLock.zig");
 const param = @import("../param.zig");
-const assert = @import("../printf.zig").assert;
-const panic = @import("../printf.zig").panic;
+const assert = @import("../diag.zig").assert;
 const Process = @import("../process/Process.zig");
 const utils = @import("../utils.zig");
 const fs = @import("fs.zig");
@@ -58,7 +57,7 @@ var journal = struct {
 };
 
 pub fn init(dev: u32, super_block: *fs.SuperBlock) void {
-    assert(@sizeOf(Header) < fs.block_size, @src());
+    assert(@sizeOf(Header) < fs.block_size);
 
     journal.lock.init("journal");
     journal.start = super_block.log_start;
@@ -152,7 +151,7 @@ pub const batch = struct {
             defer journal.lock.release();
 
             journal.outstanding -= 1;
-            assert(!journal.committing, @src());
+            assert(!journal.committing);
 
             if (journal.outstanding == 0) {
                 do_commit = true;
@@ -221,9 +220,9 @@ pub fn write(buf: *fs.Buffer) void {
     defer journal.lock.release();
 
     if (journal.header.n >= @min(param.log_size, journal.size - 1))
-        panic(@src(), "too big a transcation({d})", .{journal.header.n});
+        @panic("Transaction too big");
     if (journal.outstanding == 0)
-        panic(@src(), "outside of transaction", .{});
+        @panic("Outside of transaction");
 
     var i: u32 = 0;
     while (i < journal.header.n) : (i += 1) {

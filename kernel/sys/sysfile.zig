@@ -1,12 +1,11 @@
-const mem = @import("std").mem;
+const std = @import("std");
+const mem = std.mem;
 
+const assert = @import("../diag.zig").assert;
 const fs = @import("../fs/fs.zig");
 const kmem = @import("../memory/kmem.zig");
 const vm = @import("../memory/vm.zig");
 const param = @import("../param.zig");
-const panic = @import("../printf.zig").panic;
-const assert = @import("../printf.zig").assert;
-const printf = @import("../printf.zig").printf;
 const elf = @import("../process/elf.zig");
 const Process = @import("../process/Process.zig");
 const riscv = @import("../riscv.zig");
@@ -176,10 +175,7 @@ fn isDirEmpty(dir_inode: *fs.Inode) bool {
                 @intFromPtr(&dir_entry),
                 offset,
                 step,
-            ) catch |e| {
-                panic(@src(), "Inode.read failed with {s}", .{@errorName(e)});
-            } == step,
-            @src(),
+            ) catch unreachable == step,
         );
         if (dir_entry.inum != 0) return false;
     }
@@ -224,10 +220,9 @@ pub fn unlink() !u64 {
         inode.lock();
         errdefer inode.unlockPut();
 
-        if (inode.dinode.nlink < 1) {
-            // File-system inconsistency.
-            panic(@src(), "nlink < 1", .{});
-        }
+        // File-system inconsistency.
+        assert(inode.dinode.nlink >= 1);
+
         if (inode.dinode.type == .directory and !isDirEmpty(inode)) {
             // Directories must be empty before they can be unlinked.
             return Error.TryToUnlinkNotEmptyDir;
@@ -243,12 +238,7 @@ pub fn unlink() !u64 {
                 @intFromPtr(&dir_entry),
                 offset,
                 dir_entry_size,
-            ) catch |e| panic(
-                @src(),
-                "Inode.write failed with {s}",
-                .{@errorName(e)},
-            ) == dir_entry_size,
-            @src(),
+            ) catch unreachable == dir_entry_size,
         );
         if (inode.dinode.type == .directory) {
             // Update parent directory link count (if directory).
@@ -430,7 +420,7 @@ pub fn chdir() !u64 {
         try syscall.argument.asCString(0, &path_buffer);
 
     const proc = try Process.current();
-    assert(proc.cwd != null, @src());
+    assert(proc.cwd != null);
 
     var inode: *fs.Inode = undefined;
 
@@ -496,7 +486,7 @@ pub fn pipe() !u64 {
     const fd_array: u64 = syscall.argument.as(u64, 0);
 
     const proc = try Process.current();
-    assert(proc.page_table != null, @src());
+    assert(proc.page_table != null);
 
     var read_file: *fs.File = undefined;
     var write_file: *fs.File = undefined;

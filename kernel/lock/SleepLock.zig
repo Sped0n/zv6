@@ -1,4 +1,3 @@
-const panic = @import("../printf.zig").panic;
 const Process = @import("../process/Process.zig");
 const SpinLock = @import("SpinLock.zig");
 
@@ -26,11 +25,7 @@ pub fn acquire(self: *Self) void {
         &self.lock,
     );
     self.locked = true;
-    const proc = Process.current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
+    const proc = Process.current() catch unreachable;
     self.pid = proc.pid;
 }
 
@@ -47,10 +42,6 @@ pub fn holding(self: *Self) bool {
     self.lock.acquire();
     defer self.lock.release();
 
-    const proc = Process.current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
+    const proc = Process.current() catch unreachable;
     return self.locked and self.pid == proc.pid;
 }

@@ -1,8 +1,7 @@
+const assert = @import("../diag.zig").assert;
 const SpinLock = @import("../lock/SpinLock.zig");
 const kmem = @import("../memory/kmem.zig");
 const vm = @import("../memory/vm.zig");
-const panic = @import("../printf.zig").panic;
-const assert = @import("../printf.zig").assert;
 const Process = @import("../process/Process.zig");
 const fs = @import("fs.zig");
 
@@ -66,11 +65,7 @@ pub fn close(self: *Self, writable: bool) void {
 }
 
 pub fn write(self: *Self, virt_addr: u64, len: u32) !u32 {
-    const proc = Process.current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
+    const proc = Process.current() catch unreachable;
 
     self.lock.acquire();
     defer self.lock.release();
@@ -87,7 +82,7 @@ pub fn write(self: *Self, virt_addr: u64, len: u32) !u32 {
                 &self.lock,
             ); // sleep
         } else {
-            assert(proc.page_table != null, @src());
+            assert(proc.page_table != null);
             var char: u8 = 0;
             vm.kvm.copyFromUser(
                 proc.page_table.?,
@@ -106,11 +101,7 @@ pub fn write(self: *Self, virt_addr: u64, len: u32) !u32 {
 }
 
 pub fn read(self: *Self, virt_addr: u64, len: u32) !u32 {
-    const proc = Process.current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
+    const proc = Process.current() catch unreachable;
 
     self.lock.acquire();
     defer self.lock.release();
@@ -127,7 +118,7 @@ pub fn read(self: *Self, virt_addr: u64, len: u32) !u32 {
     while (i < len) : (i += 1) { // copy
         if (self.n_read == self.n_write) break;
 
-        assert(proc.page_table != null, @src());
+        assert(proc.page_table != null);
         const char = self.data[self.n_read % pipe_size];
         self.n_read += 1;
         vm.uvm.copyFromKernel(

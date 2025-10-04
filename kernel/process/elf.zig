@@ -5,7 +5,6 @@ const fs = @import("../fs/fs.zig");
 const kmem = @import("../memory/kmem.zig");
 const vm = @import("../memory/vm.zig");
 const param = @import("../param.zig");
-const panic = @import("../printf.zig").panic;
 const riscv = @import("../riscv.zig");
 const utils = @import("../utils.zig");
 const Process = @import("Process.zig");
@@ -76,13 +75,7 @@ fn loadSegment(
         const phy_addr = vm.walkAddr(
             page_table,
             virt_addr + n_read,
-        ) catch |e| {
-            panic(
-                @src(),
-                "address should exist, but walkAddr failed with {s}",
-                .{@errorName(e)},
-            );
-        };
+        ) catch unreachable;
         const step: u32 = @min(size - n_read, riscv.pg_size);
         if (try inode.read(
             false,
@@ -140,10 +133,8 @@ pub fn exec(_path: []const u8, argv: []const kmem.Page) !u64 {
         if (elf_hdr.magic != elf_magic) return Error.MagicMismatch;
 
         // Create a new user page table for the image we are about to load.
-        var proc = Process.current() catch panic(
-            @src(),
+        var proc = Process.current() catch @panic(
             "current proc is null",
-            .{},
         );
         new_page_table = try proc.createPageTable();
 
@@ -191,10 +182,8 @@ pub fn exec(_path: []const u8, argv: []const kmem.Page) !u64 {
     }
 
     // Re-read current proc (in case the scheduler swapped us).
-    var proc = Process.current() catch panic(
-        @src(),
+    var proc = Process.current() catch @panic(
         "current proc is null",
-        .{},
     );
     const old_size = proc.size;
 
