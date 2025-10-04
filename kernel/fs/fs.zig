@@ -1,7 +1,6 @@
 const SleepLock = @import("../lock/SleepLock.zig");
 const param = @import("../param.zig");
-const assert = @import("../printf.zig").assert;
-const printf = @import("../printf.zig").printf;
+const assert = @import("../diag.zig").assert;
 pub const Buffer = @import("Buffer.zig");
 pub const DiskInode = @import("dinode.zig").DiskInode;
 pub const File = @import("File.zig");
@@ -52,7 +51,7 @@ pub var super_block: SuperBlock = undefined;
 pub fn init(dev: u32) void {
     super_block.init();
     super_block.read(dev);
-    assert(super_block.magic == magic, @src());
+    assert(super_block.magic == magic);
     journal.init(dev, &super_block);
 }
 
@@ -114,7 +113,7 @@ pub const block = struct {
         const bitmap_offset = blockno % bitmap_bits_per_block;
         const mask: u8 = @as(u8, 1) << @intCast(bitmap_offset % 8);
         const block_in_use = &buffer.data[bitmap_offset / 8];
-        assert(block_in_use.* & mask != 0, @src()); // Block should not be freed
+        assert(block_in_use.* & mask != 0); // Block should not be freed
         block_in_use.* &= ~mask; // Mark block free.
         journal.write(buffer);
     }

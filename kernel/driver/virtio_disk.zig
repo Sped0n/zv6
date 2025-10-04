@@ -1,9 +1,8 @@
+const assert = @import("../diag.zig").assert;
 const fs = @import("../fs/fs.zig");
 const SleepLock = @import("../lock/SleepLock.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
 const kmem = @import("../memory/kmem.zig");
-const assert = @import("../printf.zig").assert;
-const panic = @import("../printf.zig").panic;
 const Process = @import("../process/Process.zig");
 const utils = @import("../utils.zig");
 const virtio = @import("../virtio.zig");
@@ -75,7 +74,7 @@ pub fn init() void {
         virtio.MMIO.read(.version) != 2 or
         virtio.MMIO.read(.device_id) != 2 or
         virtio.MMIO.read(.verdor_id) != 0x554d4551)
-        panic(@src(), "could not find disk", .{});
+        @panic("could not find disk");
 
     // reset device
     var status: u32 = 0;
@@ -108,50 +107,29 @@ pub fn init() void {
 
     // re-read status to ensure features_ok is set.
     status = virtio.MMIO.read(.status);
-    if (status & @intFromEnum(virtio.Status.features_ok) == 0)
-        panic(@src(), "features_ok unset", .{});
+    assert(status & @intFromEnum(virtio.Status.features_ok) != 0);
 
     // initialize queue 0.
     virtio.MMIO.write(.queue_sel, 0);
 
     // ensure queue 0 is not in use
-    if (virtio.MMIO.read(.queue_ready) != 0) panic(
-        @src(),
-        "virtio disk should not be ready",
-        .{},
-    );
+    assert(virtio.MMIO.read(.queue_ready) == 0);
 
     // check maximum queue size.
     const max = virtio.MMIO.read(.queue_num_max);
-    if (max == 0) panic(@src(), "no queue 0", .{});
-    if (max < virtio.num) panic(
-        @src(),
-        "max queue too short({d})",
-        .{max},
-    );
+    assert(max != 0); // no queue 0
+    assert(max >= virtio.num); // max queue too short
 
     // allocate and zero queue memory.
-    const desc_page = kmem.alloc() catch panic(
-        @src(),
-        "desc kalloc failed",
-        .{},
-    );
+    const desc_page = kmem.alloc() catch unreachable;
     @memset(desc_page, 0);
     disk.desc = @ptrCast(desc_page);
 
-    const avail_page = kmem.alloc() catch panic(
-        @src(),
-        "avail kalloc failed",
-        .{},
-    );
+    const avail_page = kmem.alloc() catch unreachable;
     @memset(avail_page, 0);
     disk.avail = @ptrCast(avail_page);
 
-    const used_page = kmem.alloc() catch panic(
-        @src(),
-        "used kalloc failed",
-        .{},
-    );
+    const used_page = kmem.alloc() catch unreachable;
     @memset(used_page, 0);
     disk.used = @ptrCast(used_page);
 
@@ -195,8 +173,8 @@ fn allocDesc() ?u16 {
 
 /// mark a descriptor as free.
 fn freeDesc(i: usize) void {
-    assert(i < virtio.num, @src());
-    assert(disk.free[i] == false, @src());
+    assert(i < virtio.num);
+    assert(disk.free[i] == false);
 
     disk.desc[i].addr = 0;
     disk.desc[i].len = 0;
@@ -332,13 +310,14 @@ pub fn intr() void {
         utils.fence();
         const id = disk.used.ring[disk.used_index % virtio.num].id;
 
-        assert(disk.in_flight_operations[id].status == .finished, @src());
+        assert(disk.in_flight_operations[id].status == .finished);
 
         if (disk.in_flight_operations[id].buffer) |buffer| {
             buffer.owned_by_disk = false;
             Process.wakeUp(@intFromPtr(buffer));
         } else {
-            panic(@src(), "expect a pre-stored buf channel", .{});
+            // expect a pre-stored buf channel
+            unreachable;
         }
     }
 }

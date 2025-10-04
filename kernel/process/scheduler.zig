@@ -1,6 +1,4 @@
 const param = @import("../param.zig");
-const panic = @import("../printf.zig").panic;
-const printf = @import("../printf.zig").printf;
 const riscv = @import("../riscv.zig");
 const Context = @import("context.zig").Context;
 const Cpu = @import("Cpu.zig");
@@ -61,20 +59,18 @@ pub fn scheduler() void {
 /// break in the few places where a lock is held but
 /// there's no process.
 pub fn sched() void {
-    const proc = Process.current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
+    const proc = Process.current() catch @panic(
+        "sched() called without a current process",
     );
 
     if (!proc.lock.holding())
-        panic(@src(), "proc lock not holding", .{});
+        @panic("sched() called without holding process lock");
     if (Cpu.current().noff != 1)
-        panic(@src(), "cpu noff({d}) is not 1", .{Cpu.current().noff});
+        @panic("sched() called with noff != 1");
     if (proc.state == .running)
-        panic(@src(), "current proc is running", .{});
+        @panic("sched() called with process running");
     if (riscv.intrGet())
-        panic(@src(), "interruptible", .{});
+        @panic("sched() called with interrupts enabled");
 
     const intr_enable = Cpu.current().intr_enable;
     swtch(&proc.context, &Cpu.current().context);

@@ -1,11 +1,9 @@
 const mem = @import("std").mem;
 
+const assert = @import("../diag.zig").assert;
 const SleepLock = @import("../lock/SleepLock.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
 const param = @import("../param.zig");
-const printf = @import("../printf.zig").printf;
-const assert = @import("../printf.zig").assert;
-const panic = @import("../printf.zig").panic;
 const Process = @import("../process/Process.zig");
 const utils = @import("../utils.zig");
 const fs = @import("fs.zig");
@@ -122,7 +120,7 @@ var inode_table = struct {
         }
 
         // Recycle an inode entry.
-        assert(empty != null, @src());
+        assert(empty != null);
 
         const inode = empty.?;
         inode.dev = dev;
@@ -223,7 +221,7 @@ pub fn dup(self: *Self) *Self {
 /// Lock the given inode.
 /// Reads the inode from disk if necessary.
 pub fn lock(self: *Self) void {
-    assert(self.ref > 0, @src());
+    assert(self.ref > 0);
 
     self._lock.acquire();
 
@@ -244,12 +242,12 @@ pub fn lock(self: *Self) void {
     }
 
     self.valid = true;
-    assert(self.dinode.type != .free, @src());
+    assert(self.dinode.type != .free);
 }
 
 /// Unlock the given inode.
 pub fn unlock(self: *Self) void {
-    assert(self._lock.holding() and self.ref > 0, @src());
+    assert(self._lock.holding() and self.ref > 0);
 
     self._lock.release();
 }
@@ -340,7 +338,8 @@ fn bmap(self: *Self, blockno: u32) ?u32 {
         return addr;
     }
 
-    panic(@src(), "out of range", .{});
+    // out of range
+    unreachable;
 }
 
 // Truncate inode (discard contents).
@@ -503,7 +502,7 @@ pub fn write(
 /// Look for a directory entry in a directory.
 /// If found, set *poff to byte offset of entry.
 pub fn dirLookUp(self: *Self, name: []const u8, offset_ptr: ?*u32) ?*Self {
-    assert(self.dinode.type == .directory, @src());
+    assert(self.dinode.type == .directory);
 
     var offset: u32 = 0;
     var dir_entry: fs.DirEntry = undefined;
@@ -516,12 +515,7 @@ pub fn dirLookUp(self: *Self, name: []const u8, offset_ptr: ?*u32) ?*Self {
                 @intFromPtr(&dir_entry),
                 offset,
                 step,
-            ) catch |e| panic(
-                @src(),
-                "read failed with {s}",
-                .{@errorName(e)},
-            ) == step,
-            @src(),
+            ) catch unreachable == step,
         );
 
         if (dir_entry.inum == 0) continue;
@@ -555,14 +549,7 @@ pub fn dirLink(self: *Self, name: []const u8, inum: u32) !void {
                 @intFromPtr(&dir_entry),
                 offset,
                 step,
-            ) catch |e| {
-                panic(
-                    @src(),
-                    "dirlink read failed with {s}",
-                    .{@errorName(e)},
-                );
-            } == step,
-            @src(),
+            ) catch unreachable == step,
         );
 
         if (dir_entry.inum == 0) break;

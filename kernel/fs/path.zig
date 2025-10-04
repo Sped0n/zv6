@@ -1,7 +1,7 @@
-const mem = @import("std").mem;
+const std = @import("std");
+const mem = std.mem;
 
 const param = @import("../param.zig");
-const panic = @import("../printf.zig").panic;
 const Process = @import("../process/Process.zig");
 const utils = @import("../utils.zig");
 const fs = @import("fs.zig");
@@ -73,19 +73,11 @@ fn lookup(path: []const u8, comptime is_parent: bool, out_name: []u8) !*fs.Inode
         inode = fs.Inode.get(param.root_dev, fs.root_ino);
     } else {
         // relative path
-        const curr_proc = Process.current() catch panic(
-            @src(),
-            "current proc is null, path is {s}",
-            .{path},
-        );
+        const curr_proc = Process.current() catch unreachable;
         if (curr_proc.cwd) |cwd| {
             inode = cwd.dup();
         } else {
-            panic(
-                @src(),
-                "current proc(name={s}, pid={d})'s cwd null, path is {s}",
-                .{ curr_proc.name, curr_proc.pid, path },
-            );
+            unreachable;
         }
     }
 

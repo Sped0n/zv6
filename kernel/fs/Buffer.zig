@@ -1,9 +1,9 @@
-const SleepLock = @import("../lock/SleepLock.zig");
-const fs = @import("fs.zig");
+const assert = @import("../diag.zig").assert;
 const virtio_disk = @import("../driver/virtio_disk.zig");
+const SleepLock = @import("../lock/SleepLock.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
 const param = @import("../param.zig");
-const panic = @import("../printf.zig").panic;
+const fs = @import("fs.zig");
 
 valid: bool,
 owned_by_disk: bool,
@@ -98,7 +98,7 @@ fn get(dev: u32, blockno: u32) *Self {
         return buffer;
     }
 
-    panic(@src(), "no buf available", .{});
+    unreachable;
 }
 
 /// Return a locked buf with the content of the indicated block.
@@ -113,22 +113,14 @@ pub fn readFrom(dev: u32, blockno: u32) *Self {
 
 /// Write buf's contents to disk. Must be locked.
 pub fn writeBack(self: *Self) void {
-    if (!self.lock.holding()) panic(
-        @src(),
-        "buf is not locked",
-        .{},
-    );
+    assert(self.lock.holding() == true);
     virtio_disk.diskReadWrite(self, true);
 }
 
 /// Release a locked buffer.
 /// Move to the head of the most recently-used list.
 pub fn release(self: *Self) void {
-    if (!self.lock.holding()) panic(
-        @src(),
-        "buf is not locked",
-        .{},
-    );
+    assert(self.lock.holding() == true);
 
     self.lock.release();
 

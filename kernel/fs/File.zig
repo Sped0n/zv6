@@ -1,11 +1,10 @@
-const fs = @import("fs.zig");
-const param = @import("../param.zig");
+const assert = @import("../diag.zig").assert;
 const SpinLock = @import("../lock/SpinLock.zig");
-const Process = @import("../process/Process.zig");
-const Stat = @import("stat.zig").Stat;
 const vm = @import("../memory/vm.zig");
-const assert = @import("../printf.zig").assert;
-const panic = @import("../printf.zig").panic;
+const param = @import("../param.zig");
+const Process = @import("../process/Process.zig");
+const fs = @import("fs.zig");
+const Stat = @import("stat.zig").Stat;
 
 type: enum { none, pipe, inode, device },
 ref: u32,
@@ -84,7 +83,7 @@ pub fn dup(self: *Self) *Self {
     file_table.lock.acquire();
     defer file_table.lock.release();
 
-    assert(self.ref > 0, @src());
+    assert(self.ref > 0);
     self.ref += 1;
     return self;
 }
@@ -92,44 +91,40 @@ pub fn dup(self: *Self) *Self {
 /// Close file f.
 /// Decrement ref count, close when reaches 0.
 pub fn close(self: *Self) void {
-    var tmp: Self = undefined;
+    var copy: Self = undefined;
 
     {
         file_table.lock.acquire();
         defer file_table.lock.release();
 
-        assert(self.ref > 0, @src());
+        assert(self.ref > 0);
 
         self.ref -= 1;
         if (self.ref > 0) return;
 
-        tmp = self.*;
+        copy = self.*;
         self.ref = 0;
         self.type = .none;
     }
 
-    switch (tmp.type) {
+    switch (copy.type) {
         .pipe => {
-            assert(tmp.pipe != null, @src());
-            tmp.pipe.?.close(tmp.writable);
+            assert(copy.pipe != null);
+            copy.pipe.?.close(copy.writable);
         },
         .inode, .device => {
-            assert(tmp.inode != null, @src());
+            assert(copy.inode != null);
             fs.journal.batch.begin();
             defer fs.journal.batch.end();
 
-            tmp.inode.?.put();
+            copy.inode.?.put();
         },
         .none => {},
     }
 }
 
 pub fn stat(self: *Self, user_virt_addr: u64) !void {
-    const proc = Process.current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
+    const proc = Process.current() catch unreachable;
 
     if (self.type != .device and self.type != .inode)
         return Error.NotInodeOrDevice;
@@ -141,11 +136,10 @@ pub fn stat(self: *Self, user_virt_addr: u64) !void {
         defer inode.unlock();
         inode.statCopyTo(&_stat);
     } else {
-        panic(@src(), "inode is null", .{});
-        return;
+        unreachable;
     }
 
-    assert(proc.page_table != null, @src());
+    assert(proc.page_table != null);
     try vm.uvm.copyFromKernel(
         proc.page_table.?,
         user_virt_addr,
@@ -160,7 +154,7 @@ pub fn read(self: *Self, user_virt_addr: u64, len: u32) !u32 {
 
     switch (self.type) {
         .pipe => {
-            assert(self.pipe != null, @src());
+            assert(self.pipe != null);
             return try self.pipe.?.read(user_virt_addr, len);
         },
         .device => {
@@ -190,11 +184,11 @@ pub fn read(self: *Self, user_virt_addr: u64, len: u32) !u32 {
                 self.offset += r;
                 return r;
             } else {
-                panic(@src(), "inode is null", .{});
+                unreachable;
             }
         },
         .none => {
-            panic(@src(), "file type is none", .{});
+            unreachable;
         },
     }
 }
@@ -205,7 +199,7 @@ pub fn write(self: *Self, user_virt_addr: u64, len: u32) !u32 {
 
     switch (self.type) {
         .pipe => {
-            assert(self.pipe != null, @src());
+            assert(self.pipe != null);
             return try self.pipe.?.write(user_virt_addr, len);
         },
         .device => {
@@ -262,7 +256,7 @@ pub fn write(self: *Self, user_virt_addr: u64, len: u32) !u32 {
             }
         },
         .none => {
-            panic(@src(), "file type is none", .{});
+            unreachable;
         },
     }
 }

@@ -1,15 +1,17 @@
-const assert = @import("printf.zig").assert;
+const std = @import("std");
+
+const assert = @import("diag.zig").assert;
 const plic = @import("driver/plic.zig");
 const uart = @import("driver/uart.zig");
 const virtio_disk = @import("driver/virtio_disk.zig");
 const SpinLock = @import("lock/SpinLock.zig");
 const memlayout = @import("memlayout.zig");
-const panic = @import("printf.zig").panic;
-const printf = @import("printf.zig").printf;
 const Cpu = @import("process/Cpu.zig");
 const Process = @import("process/Process.zig");
 const riscv = @import("riscv.zig");
 const syscall = @import("sys/syscall.zig");
+
+const log = std.log.scoped(.trap);
 
 // trampoline.S
 const trampoline = @extern(*u8, .{ .name = "trampoline" });
@@ -36,19 +38,14 @@ pub fn initHardwareThread() void {
 /// Handle an interrupt, exception, or system call from user space.
 /// called from trampoline.S
 pub fn userTrap() callconv(.c) void {
-    if ((riscv.sstatus.read() & @intFromEnum(riscv.SStatusValue.spp)) != 0) {
-        panic(@src(), "not from user mode", .{});
-    }
+    // must from user mode
+    assert(riscv.sstatus.read() & @intFromEnum(riscv.SStatusValue.spp) == 0);
 
     // send interrupt and exceptions to kernelTrap(),
     // since we're now in the kernel.
     riscv.stvec.write(@intFromPtr(&kernelVec));
 
-    const proc = Process.current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
+    const proc = Process.current() catch unreachable;
     const trap_frame = proc.trap_frame.?;
 
     // save user program counter
@@ -74,9 +71,12 @@ pub fn userTrap() callconv(.c) void {
         which_dev = devIntr();
 
         if (which_dev == .not_recognize) {
-            printf("\n", .{});
-            printf("usertrap(): unexpected scause {x}, pid={d}\n", .{ riscv.scause.read(), proc.pid });
-            printf("            sepc={x} stval={x}\n", .{ riscv.sepc.read(), riscv.stval.read() });
+            log.err("usertrap(): unexpected scause {x}, pid={d}, sepc={x}, stval={x}\n", .{
+                riscv.scause.read(),
+                proc.pid,
+                riscv.sepc.read(),
+                riscv.stval.read(),
+            });
             proc.setKilled();
         }
     }
@@ -91,12 +91,8 @@ pub fn userTrap() callconv(.c) void {
 
 /// return to user space
 pub fn userTrapRet() callconv(.c) void {
-    const proc = Process.current() catch panic(
-        @src(),
-        "current proc is null",
-        .{},
-    );
-    assert(proc.page_table != null, @src());
+    const proc = Process.current() catch unreachable;
+    assert(proc.page_table != null);
 
     // we're about to switch the destination of traps from
     // kernelTrap() to userTrap(), so turn off interrupts until
@@ -153,22 +149,16 @@ pub export fn kernelTrap() callconv(.c) void {
     const sstatus = riscv.sstatus.read();
     const scause = riscv.scause.read();
 
-    if ((sstatus & @intFromEnum(riscv.SStatusValue.spp)) == 0) {
-        panic(
-            @src(),
-            "not from supervisor mode",
-            .{},
-        );
-    }
-    if (riscv.intrGet()) {
-        panic(@src(), "interrupt enabled", .{});
-    }
+    // must from supervisor mode
+    assert(sstatus & @intFromEnum(riscv.SStatusValue.spp) != 0);
+
+    // interrupts should be disabled now
+    assert(!riscv.intrGet());
 
     const which_dev = devIntr();
     if (which_dev == .not_recognize) {
         // interrupt or trap from an unknown source
-        panic(
-            @src(),
+        log.err(
             "scause={x}, sepc={x}, stval={x}\n",
             .{ scause, riscv.sepc.read(), riscv.stval.read() },
         );
@@ -212,7 +202,7 @@ pub fn devIntr() WhichDev {
         } else if (irq == memlayout.virtio0_irq) {
             virtio_disk.intr();
         } else if (irq > 0) {
-            printf("unexpected interrupt irq={d}\n", .{irq});
+            log.err("unexpected interrupt irq={d}\n", .{irq});
         }
 
         // the PLIC allows each device to raise at most one

@@ -1,7 +1,21 @@
+const std = @import("std");
+
+const build_options = @import("build_options");
+
+const diag = @import("diag.zig");
 const main = @import("main.zig");
 const memlayout = @import("memlayout.zig");
 const param = @import("param.zig");
 const riscv = @import("riscv.zig");
+
+const chosen_log_level = std.meta.stringToEnum(std.log.Level, build_options.log_level) orelse
+    @compileError(std.fmt.comptimePrint("unsupported log level '{s}'", .{build_options.log_level}));
+
+pub const std_options = std.Options{
+    .log_level = chosen_log_level,
+    .logFn = diag.logFn,
+};
+pub const panic = std.debug.FullPanic(diag.panicFn);
 
 export var stack0 align(16) = [_]u8{0} ** (4096 * param.n_cpu);
 
