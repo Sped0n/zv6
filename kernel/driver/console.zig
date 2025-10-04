@@ -158,6 +158,8 @@ pub fn init() void {
 
     // connect read and write system calls
     // to console.read and console.write.
-    File.device_switches[File.console].read = &read;
-    File.device_switches[File.console].write = &write;
+    File.device_switches[@intFromEnum(File.DeviceSwitchID.console)] = .{
+        .read = read,
+        .write = write,
+    };
 }

@@ -33,15 +33,15 @@ const DeviceSwitch = struct {
     read: ?*const fn (is_user_dst: bool, dst_addr: u64, len: u32) ?u32,
     write: ?*const fn (is_user_dst: bool, dst_addr: u64, len: u32) ?u32,
 };
-
 pub var device_switches: [param.n_dev]DeviceSwitch = [_]DeviceSwitch{
     DeviceSwitch{
         .read = null,
         .write = null,
     },
 } ** param.n_dev;
-
-pub const console = 1;
+pub const DeviceSwitchID = enum(usize) {
+    console = 1,
+};
 
 var file_table = struct {
     lock: SpinLock,
