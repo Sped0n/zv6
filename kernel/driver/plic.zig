@@ -1,5 +1,9 @@
+const std = @import("std");
+
 const memlayout = @import("../memlayout.zig");
 const Cpu = @import("../process/Cpu.zig");
+
+const log = std.log.scoped(.plic);
 
 pub fn init() void {
     // set desired IRQ priorities non-zero (otherwise disabled)
@@ -11,6 +15,8 @@ pub fn init() void {
         *volatile u32,
         @ptrFromInt(memlayout.plic + memlayout.virtio0_irq * 4),
     ).* = 1;
+
+    log.info("PLIC initialized", .{});
 }
 
 pub fn initHardwareThread() void {

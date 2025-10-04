@@ -1,3 +1,5 @@
+const std = @import("std");
+
 const assert = @import("../diag.zig").assert;
 const fs = @import("../fs/fs.zig");
 const SleepLock = @import("../lock/SleepLock.zig");
@@ -6,6 +8,8 @@ const kmem = @import("../memory/kmem.zig");
 const Process = @import("../process/Process.zig");
 const utils = @import("../utils.zig");
 const virtio = @import("virtio.zig");
+
+const log = std.log.scoped(.virtio_disk);
 
 const InFlightOperationStatus = enum(u8) {
     started = 0xff,
@@ -156,6 +160,8 @@ pub fn init() void {
     // tell device we're completely ready.
     status |= @intFromEnum(virtio.Status.driver_ok);
     virtio.MMIO.write(.status, status);
+
+    log.info("VirtIO disk initialized", .{});
 
     // plic.zig and trap.zig arrange for interrupts from irq
 }

@@ -1,9 +1,13 @@
+const std = @import("std");
+
 const assert = @import("../diag.zig").assert;
 const virtio_disk = @import("../driver/virtio_disk.zig");
 const SleepLock = @import("../lock/SleepLock.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
 const param = @import("../param.zig");
 const fs = @import("fs.zig");
+
+const log = std.log.scoped(.fs);
 
 valid: bool,
 owned_by_disk: bool,
@@ -64,6 +68,8 @@ pub fn init() void {
         buffer_cache.head.next.prev = buffer;
         buffer_cache.head.next = buffer;
     }
+
+    log.info("File system buffer cache initialized", .{});
 }
 
 /// Look through buffer cache for block on device dev.

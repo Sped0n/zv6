@@ -9,6 +9,8 @@ var lock: SpinLock = undefined;
 var panicking: bool = false;
 var panicked: bool = false;
 
+const log = std.log.scoped(.diag);
+
 pub fn logFn(
     comptime level: std.log.Level,
     comptime scope: @Type(.enum_literal),
@@ -56,26 +58,21 @@ pub fn panicFn(msg: []const u8, first_trace_addr: ?usize) noreturn {
         panicking = true;
         defer panicking = false;
 
-        logFn(
-            .err,
-            .diag,
+        log.err(
             "========================================",
             .{},
         );
 
-        logFn(.err, .diag, "CPU {d} panicked: {s}", .{ cpu_id, msg });
-
-        logFn(.err, .diag, "Stack trace:", .{});
+        log.err("CPU {d} panicked: {s}", .{ cpu_id, msg });
+        log.err("Stack trace:", .{});
         if (first_trace_addr) |first_addr| {
             var stack_iterator = std.debug.StackIterator.init(first_addr, @frameAddress());
             while (stack_iterator.next()) |addr| {
-                logFn(.err, .diag, "  0x{x}", .{addr});
+                log.err("  0x{x}", .{addr});
             }
         }
 
-        logFn(
-            .err,
-            .diag,
+        log.err(
             "========================================",
             .{},
         );
@@ -92,12 +89,12 @@ pub fn checkPanicked() void {
 
 pub fn assert(condition: bool) void {
     if (!condition) {
-        logFn(.err, .diag, "Assertion failed", .{});
+        log.err("Assertion failed", .{});
         unreachable;
     }
 }
 
 pub fn init() void {
     lock.init("diag");
-    logFn(.debug, .diag, "Diagnostics initialized", .{});
+    log.info("Diagnostics initialized", .{});
 }

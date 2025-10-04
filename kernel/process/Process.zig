@@ -144,6 +144,7 @@ pub fn init() void {
         proc.lock.init("proc");
         proc.kernel_stack_virtual_addr = memlayout.kernelStack(i);
     }
+    log.info("Process table initialized", .{});
 }
 
 /// Return the current struct proc *.
@@ -302,6 +303,8 @@ pub fn userInit() void {
     proc.state = .runnable;
 
     proc.lock.release();
+
+    log.info("1st user process initialized", .{});
 }
 
 /// Grow or shrink user memory by n bytes.

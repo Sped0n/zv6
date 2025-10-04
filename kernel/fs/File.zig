@@ -1,3 +1,5 @@
+const std = @import("std");
+
 const assert = @import("../diag.zig").assert;
 const SpinLock = @import("../lock/SpinLock.zig");
 const vm = @import("../memory/vm.zig");
@@ -5,6 +7,8 @@ const param = @import("../param.zig");
 const Process = @import("../process/Process.zig");
 const fs = @import("fs.zig");
 const Stat = @import("stat.zig").Stat;
+
+const log = std.log.scoped(.fs);
 
 type: enum { none, pipe, inode, device },
 ref: u32,
@@ -61,6 +65,7 @@ var file_table = struct {
 
 pub fn init() void {
     file_table.lock.init("ftable");
+    log.info("File table initialized", .{});
 }
 
 /// Allocate a file structure.

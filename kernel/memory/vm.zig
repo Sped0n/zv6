@@ -1,9 +1,13 @@
+const std = @import("std");
+
 const assert = @import("../diag.zig").assert;
 const memlayout = @import("../memlayout.zig");
 const kmem = @import("../memory/kmem.zig");
 const Process = @import("../process/Process.zig");
 const riscv = @import("../riscv.zig");
 const utils = @import("../utils.zig");
+
+const log = std.log.scoped(.vm);
 
 // kernel.ld set this to end of kernel code.
 const etext = @extern(*u8, .{ .name = "etext" });
@@ -236,6 +240,7 @@ pub const kvm = struct {
     /// Initialize the one kernel_page_table
     pub fn init() void {
         kernel_page_table = kvm.make() catch unreachable;
+        log.info("Virtual memory initialized", .{});
     }
 
     /// Switch h/w page table register to the kernel's page table,

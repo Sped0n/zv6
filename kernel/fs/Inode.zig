@@ -1,4 +1,5 @@
-const mem = @import("std").mem;
+const std = @import("std");
+const mem = std.mem;
 
 const assert = @import("../diag.zig").assert;
 const SleepLock = @import("../lock/SleepLock.zig");
@@ -7,6 +8,8 @@ const param = @import("../param.zig");
 const Process = @import("../process/Process.zig");
 const utils = @import("../utils.zig");
 const fs = @import("fs.zig");
+
+const log = std.log.scoped(.fs);
 
 // Inodes ----------------------------------------------------------------------
 //
@@ -154,6 +157,7 @@ pub fn init() void {
     for (&inode_table.items) |*inode| {
         inode._lock.init("inode");
     }
+    log.info("File system inode table initialized", .{});
 }
 
 pub fn get(dev: u32, inum: u32) *Self {

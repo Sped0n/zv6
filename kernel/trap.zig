@@ -28,6 +28,7 @@ pub var ticks: u32 = 0;
 
 pub fn init() void {
     ticks_lock.init("time");
+    log.info("Trap initialized", .{});
 }
 
 /// set up to take exceptions and traps while in the kernel

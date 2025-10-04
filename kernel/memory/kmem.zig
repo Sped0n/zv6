@@ -1,7 +1,11 @@
+const std = @import("std");
+
 const assert = @import("../diag.zig").assert;
 const SpinLock = @import("../lock/SpinLock.zig");
 const memlayout = @import("../memlayout.zig");
 const riscv = @import("../riscv.zig");
+
+const log = std.log.scoped(.kmem);
 
 const end = @extern(*u8, .{ .name = "end" });
 
@@ -20,16 +24,25 @@ pub const Error = error{OutOfMemory};
 
 pub fn init() void {
     lock.init("kmem");
-    freeRange(@intFromPtr(end), memlayout.phy_stop);
+    log.info(
+        "Claiming memory from 0x{x} to 0x{x}",
+        .{ @intFromPtr(end), memlayout.phy_stop },
+    );
+    const n_pages_claimed = freeRange(@intFromPtr(end), memlayout.phy_stop);
+    log.info("{d} pages claimed", .{n_pages_claimed});
+    log.info("Page allocator initialized", .{});
 }
 
-fn freeRange(start_addr: u64, end_addr: u64) void {
+fn freeRange(start_addr: u64, end_addr: u64) usize {
+    var n_pages_claimed: usize = 0;
     var anchor: u64 = riscv.pgRoundUp(start_addr);
     while (anchor + riscv.pg_size <= end_addr) : ({
         anchor += riscv.pg_size;
+        n_pages_claimed += 1;
     }) {
         free(@ptrFromInt(anchor));
     }
+    return n_pages_claimed;
 }
 
 /// Free the page of physical memory pointed at by pa,
