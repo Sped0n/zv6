@@ -1,51 +1,91 @@
 // Factories -------------------------------------------------------------------
 
-pub fn Register(comptime name: []const u8) type {
-    return struct {
-        /// Read the register value
-        pub inline fn read() u64 {
-            return asm volatile ("csrr a0, " ++ name
-                : [ret] "={a0}" (-> u64),
-            );
-        }
+const RegisterType = enum {
+    read_only,
+    write_only,
+    read_write,
+};
 
-        /// Write a value to the register
-        pub inline fn write(value: u64) void {
-            asm volatile ("csrw " ++ name ++ ", a0"
-                :
-                : [value] "{a0}" (value),
-            );
-        }
+fn CSRRegister(comptime name: []const u8, comptime rtype: RegisterType) type {
+    return switch (rtype) {
+        .read_only => struct {
+            /// Read the register value
+            pub inline fn read() u64 {
+                return asm volatile ("csrr a0, " ++ name
+                    : [ret] "={a0}" (-> u64),
+                );
+            }
+        },
+        .write_only => struct {
+            /// Write a value to the register
+            pub inline fn write(value: u64) void {
+                asm volatile ("csrw " ++ name ++ ", a0"
+                    :
+                    : [value] "{a0}" (value),
+                );
+            }
+        },
+        .read_write => struct {
+            /// Read the register value
+            pub inline fn read() u64 {
+                return asm volatile ("csrr a0, " ++ name
+                    : [ret] "={a0}" (-> u64),
+                );
+            }
+
+            /// Write a value to the register
+            pub inline fn write(value: u64) void {
+                asm volatile ("csrw " ++ name ++ ", a0"
+                    :
+                    : [value] "{a0}" (value),
+                );
+            }
+        },
     };
 }
 
-pub fn ReadOnlyRegister(comptime name: []const u8) type {
-    return struct {
-        /// Read the register value
-        pub inline fn read() u64 {
-            return asm volatile ("csrr a0, " ++ name
-                : [ret] "={a0}" (-> u64),
-            );
-        }
-    };
-}
+fn Register(comptime name: []const u8, comptime rtype: RegisterType) type {
+    return switch (rtype) {
+        .read_only => struct {
+            /// Read the register value
+            pub inline fn read() u64 {
+                return asm volatile ("mv a0, " ++ name
+                    : [ret] "={a0}" (-> u64),
+                );
+            }
+        },
+        .write_only => struct {
+            /// Write a value to the register
+            pub inline fn write(value: u64) void {
+                asm volatile ("mv " ++ name ++ ", a0"
+                    :
+                    : [value] "{a0}" (value),
+                );
+            }
+        },
+        .read_write => struct {
+            /// Read the register value
+            pub inline fn read() u64 {
+                return asm volatile ("mv a0, " ++ name
+                    : [ret] "={a0}" (-> u64),
+                );
+            }
 
-pub fn WriteOnlyRegister(comptime name: []const u8) type {
-    return struct {
-        /// Write a value to the register
-        pub inline fn write(value: u64) void {
-            asm volatile ("csrw " ++ name ++ ", a0"
-                :
-                : [value] "{a0}" (value),
-            );
-        }
+            /// Write a value to the register
+            pub inline fn write(value: u64) void {
+                asm volatile ("mv " ++ name ++ ", a0"
+                    :
+                    : [value] "{a0}" (value),
+                );
+            }
+        },
     };
 }
 
 // mhartid ---------------------------------------------------------------------
 
 /// hartid (cpu core id)
-pub const mhartid = ReadOnlyRegister("mhartid");
+pub const mhartid = CSRRegister("mhartid", .read_only);
 
 // mstatus ---------------------------------------------------------------------
 
@@ -58,7 +98,7 @@ pub const MStatusValue = enum(u64) {
 };
 
 /// Machine Status Register, mstatus
-pub const mstatus = Register("mstatus");
+pub const mstatus = CSRRegister("mstatus", .read_write);
 
 // mepc ------------------------------------------------------------------------
 
@@ -66,7 +106,7 @@ pub const mstatus = Register("mstatus");
 ///
 /// mepc holds the instruction address to which a return
 /// from exception will go
-pub const mepc = WriteOnlyRegister("mepc");
+pub const mepc = CSRRegister("mepc", .write_only);
 
 // sstatus ----------------------------------------------------------------------
 
@@ -80,12 +120,12 @@ pub const SStatusValue = enum(u64) {
 };
 
 /// Supervisor Status Register, sstatus
-pub const sstatus = Register("sstatus");
+pub const sstatus = CSRRegister("sstatus", .read_write);
 
 // sip -------------------------------------------------------------------------
 
 /// Read Supervisor Interrupt Pending, sip
-pub const sip = Register("sip");
+pub const sip = CSRRegister("sip", .read_write);
 
 // sie -------------------------------------------------------------------------
 
@@ -97,7 +137,7 @@ pub const SieValue = enum(u64) {
 };
 
 /// Supervisor Interrupt Enable, sie
-pub const sie = Register("sie");
+pub const sie = CSRRegister("sie", .read_write);
 
 // mie -------------------------------------------------------------------------
 
@@ -109,7 +149,7 @@ pub const MieValue = enum(u64) {
 };
 
 /// Machine-mode Interrupt Enable, mie
-pub const mie = Register("mie");
+pub const mie = CSRRegister("mie", .read_write);
 
 // sepc ------------------------------------------------------------------------
 
@@ -117,47 +157,47 @@ pub const mie = Register("mie");
 ///
 /// sepc holds the instruction address to which a
 /// return from exception will go.
-pub const sepc = Register("sepc");
+pub const sepc = CSRRegister("sepc", .read_write);
 
 // medeleg ----------------------------------------------------------------------
 
 /// Machine Exception Delegation, medeleg
-pub const medeleg = Register("medeleg");
+pub const medeleg = CSRRegister("medeleg", .read_write);
 
 // mideleg ----------------------------------------------------------------------
 
 /// Machine Interrupt Delegation, mideleg
-pub const mideleg = Register("mideleg");
+pub const mideleg = CSRRegister("mideleg", .read_write);
 
 // stvec -----------------------------------------------------------------------
 
 /// Supervisor Trap-Vector Base Address, stvec
 ///
 /// Low two bits are mode.
-pub const stvec = Register("stvec");
+pub const stvec = CSRRegister("stvec", .read_write);
 
 // mtvec -----------------------------------------------------------------------
 
 /// Machine-mode interrupt vector, mtvec
-pub const mtvec = Register("mtvec");
+pub const mtvec = CSRRegister("mtvec", .read_write);
 
 // stimecmp --------------------------------------------------------------------
 
 /// Supervisor Timer Comparison Register, stimecmp
-pub const stimecmp = Register("0x14d");
+pub const stimecmp = CSRRegister("0x14d", .read_write);
 
 // menvcfg ---------------------------------------------------------------------
 
 /// Machine Environment Configuration Register, menvcfg
-pub const menvcfg = Register("0x30a");
+pub const menvcfg = CSRRegister("0x30a", .read_write);
 
 // pmpcfg0 and pmpaddr0 --------------------------------------------------------
 
 /// Physical Memory Protection Config, pmpcfg0
-pub const pmpcfg0 = WriteOnlyRegister("pmpcfg0");
+pub const pmpcfg0 = CSRRegister("pmpcfg0", .write_only);
 
 /// Physical Memory Protection Address. pmpaddr0
-pub const pmpaddr0 = WriteOnlyRegister("pmpaddr0");
+pub const pmpaddr0 = CSRRegister("pmpaddr0", .write_only);
 
 // satp ------------------------------------------------------------------------
 
@@ -172,31 +212,31 @@ pub inline fn makeSatp(pagetable: PageTable) u64 {
 /// Supervisor Address Translation and Protection table, satp
 ///
 /// satp holds the address of the page table.
-pub const satp = Register("satp");
+pub const satp = CSRRegister("satp", .read_write);
 
 // mscratch --------------------------------------------------------------------
 
-pub const mscratch = Register("mscratch");
+pub const mscratch = CSRRegister("mscratch", .read_write);
 
 // sscratch --------------------------------------------------------------------
 
-pub const sscratch = Register("sscratch");
+pub const sscratch = CSRRegister("sscratch", .read_write);
 
 // scause and stval ------------------------------------------------------------
 
-pub const scause = ReadOnlyRegister("scause");
+pub const scause = CSRRegister("scause", .read_only);
 
-pub const stval = ReadOnlyRegister("stval");
+pub const stval = CSRRegister("stval", .read_only);
 
 // mcounteren ------------------------------------------------------------------
 
 /// Machine-mode Counter-Enable, mcounteren
-pub const mcounteren = Register("mcounteren");
+pub const mcounteren = CSRRegister("mcounteren", .read_write);
 
 // time ------------------------------------------------------------------------
 
 //Machine-mode cycle counter, time
-pub const time = ReadOnlyRegister("time");
+pub const time = CSRRegister("time", .read_only);
 
 // interrupt control -----------------------------------------------------------
 
@@ -217,40 +257,13 @@ pub inline fn intrGet() bool {
 
 // sp, tp and ra ---------------------------------------------------------------
 
-pub const sp = struct {
-    pub inline fn read() u64 {
-        return asm volatile ("mv a0, sp"
-            : [ret] "={a0}" (-> u64),
-        );
-    }
-};
+pub const sp = Register("sp", .read_only);
 
 /// tp, the thread pointer, which xv6 uses to hold this
 /// core's hartid (core number), the index into cpus[].
-pub const tp = struct {
-    /// Read the register value
-    pub inline fn read() u64 {
-        return asm volatile ("mv a0, tp"
-            : [ret] "={a0}" (-> u64),
-        );
-    }
+pub const tp = Register("tp", .read_write);
 
-    /// Write a value to the register
-    pub inline fn write(value: u64) void {
-        asm volatile ("mv tp, a0"
-            :
-            : [value] "{a0}" (value),
-        );
-    }
-};
-
-pub const ra = struct {
-    pub inline fn read() u64 {
-        return asm volatile ("mv a0, ra"
-            : [ret] "={a0}" (-> u64),
-        );
-    }
-};
+pub const ra = Register("ra", .read_only);
 
 // Misc ------------------------------------------------------------------------
 
