@@ -3,6 +3,7 @@ const std = @import("std");
 const console = @import("console.zig");
 const SpinLock = @import("lock/SpinLock.zig");
 const Cpu = @import("process/Cpu.zig");
+const riscv = @import("riscv.zig");
 
 var lock: SpinLock = undefined;
 var panicking: bool = false;
@@ -46,8 +47,6 @@ pub fn logFn(
 pub fn panicFn(msg: []const u8, first_trace_addr: ?usize) noreturn {
     const cpu_id = Cpu.id();
 
-    logFn(.err, .diag, "CPU {d} panicked: {s}", .{ cpu_id, msg });
-
     {
         defer panicked = true;
 
@@ -57,7 +56,15 @@ pub fn panicFn(msg: []const u8, first_trace_addr: ?usize) noreturn {
         panicking = true;
         defer panicking = false;
 
+        logFn(
+            .err,
+            .diag,
+            "========================================",
+            .{},
+        );
+
         logFn(.err, .diag, "CPU {d} panicked: {s}", .{ cpu_id, msg });
+
         logFn(.err, .diag, "Stack trace:", .{});
         if (first_trace_addr) |first_addr| {
             var stack_iterator = std.debug.StackIterator.init(first_addr, @frameAddress());
@@ -65,6 +72,13 @@ pub fn panicFn(msg: []const u8, first_trace_addr: ?usize) noreturn {
                 logFn(.err, .diag, "  0x{x}", .{addr});
             }
         }
+
+        logFn(
+            .err,
+            .diag,
+            "========================================",
+            .{},
+        );
     }
 
     while (true) {}
