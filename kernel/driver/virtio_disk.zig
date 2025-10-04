@@ -5,7 +5,7 @@ const SpinLock = @import("../lock/SpinLock.zig");
 const kmem = @import("../memory/kmem.zig");
 const Process = @import("../process/Process.zig");
 const utils = @import("../utils.zig");
-const virtio = @import("../virtio.zig");
+const virtio = @import("virtio.zig");
 
 const InFlightOperationStatus = enum(u8) {
     started = 0xff,
