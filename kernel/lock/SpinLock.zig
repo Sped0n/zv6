@@ -21,7 +21,7 @@ pub fn init(self: *Self, comptime name: [*:0]const u8) void {
 /// Check whether this cpu is holding the lock.
 /// Interrupts must be off.
 pub fn acquire(self: *Self) void {
-    pushOff();
+    riscv.intrDisablePush();
     assert(!self.holding());
 
     while (@atomicRmw(
@@ -53,38 +53,11 @@ pub fn release(self: *Self) void {
         builtin.AtomicOrder.release,
     );
 
-    popOff();
+    riscv.intrDisablePop();
 }
 
 /// Check whether this cpu is holding the lock.
 /// Interrupts must be off.
 pub fn holding(self: *Self) bool {
     return self.locked and self.cpu == Cpu.current();
-}
-
-/// push_off/pop_off are like intr_off()/intr_on() except that they are matched:
-/// it takes two pop_off()s to undo two push_off()s.  Also, if interrupts
-/// are initially off, then push_off, pop_off leaves them off.
-pub fn pushOff() void {
-    const old = riscv.intrGet();
-
-    riscv.intrOff();
-    const c = Cpu.current();
-    if (c.noff == 0) c.intr_enable = old;
-    c.noff += 1;
-}
-
-/// push_off/pop_off are like intr_off()/intr_on() except that they are matched:
-/// it takes two pop_off()s to undo two push_off()s.  Also, if interrupts
-/// are initially off, then push_off, pop_off leaves them off.
-pub fn popOff() void {
-    const c = Cpu.current();
-    if (riscv.intrGet()) {
-        @panic("Interruptible");
-    }
-    if (c.noff < 1) {
-        @panic("noff mismatch");
-    }
-    c.noff -= 1;
-    if (c.noff == 0 and c.intr_enable) riscv.intrOn();
 }

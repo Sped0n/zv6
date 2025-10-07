@@ -1,3 +1,5 @@
+const Cpu = @import("process/Cpu.zig");
+
 // Factories -------------------------------------------------------------------
 
 const RegisterType = enum {
@@ -253,6 +255,34 @@ pub inline fn intrOff() void {
 /// Check if device interrupts are enabled
 pub inline fn intrGet() bool {
     return (sstatus.read() & @intFromEnum(SStatusValue.sie)) != 0;
+}
+
+pub inline fn intrDisablePush() void {
+    const previous_interrupt_state = intrGet();
+
+    intrOff();
+
+    const cpu = Cpu.current();
+    if (cpu.interrupt.nested_counter == 0) {
+        cpu.interrupt.is_enabled = previous_interrupt_state;
+    }
+    cpu.interrupt.nested_counter += 1;
+}
+
+pub inline fn intrDisablePop() void {
+    const cpu = Cpu.current();
+
+    if (intrGet()) {
+        @panic("Interruptible");
+    }
+    if (cpu.interrupt.nested_counter < 1) {
+        @panic("noff mismatch");
+    }
+
+    cpu.interrupt.nested_counter -= 1;
+    if (cpu.interrupt.nested_counter == 0 and cpu.interrupt.is_enabled) {
+        intrOn();
+    }
 }
 
 // sp, tp and ra ---------------------------------------------------------------

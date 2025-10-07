@@ -5,6 +5,7 @@ const diag = @import("../diag.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
 const memlayout = @import("../memlayout.zig");
 const Process = @import("../process/Process.zig");
+const riscv = @import("../riscv.zig");
 
 // the UART control registers.
 // some have different meanings for
@@ -108,8 +109,8 @@ pub fn putChar(char: u8) void {
 /// to echo characters. it spins waiting for the uart's
 /// output register to be empty.
 pub fn putCharSync(char: u8) void {
-    SpinLock.pushOff();
-    defer SpinLock.popOff();
+    riscv.intrDisablePush();
+    defer riscv.intrDisablePop();
 
     diag.checkPanicked();
 

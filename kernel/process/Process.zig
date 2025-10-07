@@ -149,8 +149,8 @@ pub fn init() void {
 
 /// Return the current struct proc *.
 pub fn current() !*Self {
-    SpinLock.pushOff();
-    defer SpinLock.popOff();
+    riscv.intrDisablePush();
+    defer riscv.intrDisablePop();
 
     if (Cpu.current().proc) |proc| {
         return proc;
@@ -161,8 +161,8 @@ pub fn current() !*Self {
 
 /// Return the current struct proc *, or null if none.
 pub fn currentOrNull() ?*Self {
-    SpinLock.pushOff();
-    defer SpinLock.popOff();
+    riscv.intrDisablePush();
+    defer riscv.intrDisablePop();
 
     return Cpu.current().proc;
 }

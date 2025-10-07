@@ -65,14 +65,14 @@ pub fn sched() void {
 
     if (!proc.lock.holding())
         @panic("sched() called without holding process lock");
-    if (Cpu.current().noff != 1)
-        @panic("sched() called with noff != 1");
+    if (Cpu.current().interrupt.nested_counter != 1)
+        @panic("sched() called with nested_counter != 1");
     if (proc.state == .running)
         @panic("sched() called with process running");
     if (riscv.intrGet())
         @panic("sched() called with interrupts enabled");
 
-    const intr_enable = Cpu.current().intr_enable;
+    const interrupt_state = Cpu.current().interrupt.is_enabled;
     swtch(&proc.context, &Cpu.current().context);
-    Cpu.current().intr_enable = intr_enable;
+    Cpu.current().interrupt.is_enabled = interrupt_state;
 }
