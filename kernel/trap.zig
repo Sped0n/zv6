@@ -21,7 +21,7 @@ extern fn userRet() void;
 // in kernelvec.S, calls kernelTrap().
 extern fn kernelVec() void;
 
-const WhichDev = enum { not_recognize, other_dev, timer_intr };
+const InterruptSource = enum { unknown, external_device, timer };
 
 pub var ticks_lock: SpinLock = undefined;
 pub var ticks: u32 = 0;
@@ -52,7 +52,7 @@ pub fn userTrap() callconv(.c) void {
     // save user program counter
     trap_frame.epc = riscv.sepc.read();
 
-    var which_dev: WhichDev = .not_recognize;
+    var interrupt_source: InterruptSource = .unknown;
 
     if (riscv.scause.read() == 8) {
         // system call
@@ -69,9 +69,9 @@ pub fn userTrap() callconv(.c) void {
 
         syscall.syscall() catch {};
     } else {
-        which_dev = devIntr();
+        interrupt_source = detectInterruptSource();
 
-        if (which_dev == .not_recognize) {
+        if (interrupt_source == .unknown) {
             log.err("usertrap(): unexpected scause {x}, pid={d}, sepc={x}, stval={x}\n", .{
                 riscv.scause.read(),
                 proc.pid,
@@ -85,7 +85,7 @@ pub fn userTrap() callconv(.c) void {
     if (proc.isKilled()) Process.exit(-1);
 
     // give up the CPU if this is a timer interrupt.
-    if (which_dev == .timer_intr) Process.yield();
+    if (interrupt_source == .timer) Process.yield();
 
     userTrapRet();
 }
@@ -156,14 +156,14 @@ pub export fn kernelTrap() callconv(.c) void {
     // interrupts should be disabled now
     assert(!riscv.intrGet());
 
-    const which_dev = devIntr();
-    if (which_dev == .not_recognize) {
+    const interrupt_source = detectInterruptSource();
+    if (interrupt_source == .unknown) {
         // interrupt or trap from an unknown source
         log.err(
             "scause={x}, sepc={x}, stval={x}\n",
             .{ scause, riscv.sepc.read(), riscv.stval.read() },
         );
-    } else if (which_dev == .timer_intr and Process.currentOrNull() != null) {
+    } else if (interrupt_source == .timer and Process.currentOrNull() != null) {
         // give up the CPU if this is a timer interrupt.
         Process.yield();
     }
@@ -189,7 +189,7 @@ fn clockIntr() void {
     riscv.stimecmp.write(riscv.time.read() +% 1000000);
 }
 
-pub fn devIntr() WhichDev {
+pub fn detectInterruptSource() InterruptSource {
     const scause = riscv.scause.read();
 
     if (scause == 0x8000000000000009) {
@@ -211,12 +211,12 @@ pub fn devIntr() WhichDev {
         // now allowed to interrupt again.
         if (irq > 0) plic.complete(irq);
 
-        return .other_dev;
+        return .external_device;
     } else if (scause == 0x8000000000000005) {
         // timer interrupt.
         clockIntr();
-        return .timer_intr;
+        return .timer;
     } else {
-        return .not_recognize;
+        return .unknown;
     }
 }
