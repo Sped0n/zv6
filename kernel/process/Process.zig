@@ -3,6 +3,7 @@ const builtin = std.builtin;
 const mem = std.mem;
 const math = std.math;
 
+const console = @import("../console.zig");
 const assert = @import("../diag.zig").assert;
 const fs = @import("../fs/fs.zig");
 const SpinLock = @import("../lock/SpinLock.zig");
@@ -654,9 +655,12 @@ pub fn eitherCopyIn(dst: [*]u8, is_user_src: bool, src_addr: u64, len: u64) !voi
 /// Runs when user types ^P on console.
 /// No lock to avoid wedging a stuck machine further.
 pub fn dump() void {
-    log.info("=== Process dump ===", .{});
+    console.writer.print("=== Process dump ===\n", .{}) catch unreachable;
     for (&procs) |*proc| {
         if (proc.state == .unused) continue;
-        log.info("{d: <7} {s: ^10} {s}\n", .{ proc.pid, @tagName(proc.state), &proc.name });
+        console.writer.print(
+            "{d: <7} {s: ^10} {s}\n",
+            .{ proc.pid, @tagName(proc.state), &proc.name },
+        ) catch unreachable;
     }
 }
