@@ -52,7 +52,7 @@ pub const argument = struct {
     };
 
     /// Fetch the system call argument n and return it as T (i32/u32/i64/u64, etc.).
-    pub fn as(comptime T: type, n: usize) T {
+    pub fn as(comptime T: type, comptime n: usize) T {
         const proc = Process.current() catch unreachable;
         const trap_frame = proc.trap_frame.?;
 
@@ -63,14 +63,14 @@ pub const argument = struct {
             3 => trap_frame.a3,
             4 => trap_frame.a4,
             5 => trap_frame.a5,
-            else => unreachable,
+            else => @compileError("syscall.argument.as: n must be between 0 and 5"),
         };
 
         // T must be an integer type up to 64 bits
         comptime {
             const info = @typeInfo(T);
-            if (info != .int) @compileError("argRaw(T,n): T must be an integer type");
-            if (info.int.bits > 64) @compileError("argRaw(T,n): T wider than 64 bits");
+            if (info != .int) @compileError("syscall.argument.as: T must be an integer type");
+            if (info.int.bits > 64) @compileError("syscall.argument.as: T wider than 64 bits");
         }
 
         const int_info = @typeInfo(T).int;
@@ -92,13 +92,13 @@ pub const argument = struct {
 
     /// Fetch the nth word-sized system call argument as a null-terminated string.
     /// Copies into buf, at most max.
-    pub fn asCString(n: usize, buffer: []u8) ![]const u8 {
+    pub fn asCString(comptime n: usize, buffer: []u8) ![]const u8 {
         const addr: u64 = as(u64, n);
         return helpers.copyCStringFromCurrentProcess(addr, buffer);
     }
 
     /// Fetch the nth word-sized system call argument as a file descriptor
-    pub fn asOpenedFile(n: usize, out_fd: ?*usize, out_file: ?**fs.File) !void {
+    pub fn asOpenedFile(comptime n: usize, out_fd: ?*usize, out_file: ?**fs.File) !void {
         const fd: u64 = as(u64, n);
         const proc = Process.current() catch unreachable;
         if (fd >= proc.opened_files.len) return Error.BadFileDescriptor;
