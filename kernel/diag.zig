@@ -13,7 +13,7 @@ const log = std.log.scoped(.diag);
 
 pub fn logFn(
     comptime level: std.log.Level,
-    comptime scope: @Type(.enum_literal),
+    comptime scope: @EnumLiteral(),
     comptime fmt: []const u8,
     args: anytype,
 ) void {
@@ -65,11 +65,18 @@ pub fn panicFn(msg: []const u8, first_trace_addr: ?usize) noreturn {
 
         log.err("CPU {d} panicked: {s}", .{ cpu_id, msg });
         log.err("Stack trace:", .{});
-        if (first_trace_addr) |first_addr| {
-            var stack_iterator = std.debug.StackIterator.init(first_addr, @frameAddress());
-            while (stack_iterator.next()) |addr| {
-                log.err("  0x{x}", .{addr});
-            }
+        log.err("  0x{x}", .{first_trace_addr orelse @returnAddress()});
+        var fp = @frameAddress();
+        for (0..63) |_| {
+            if (fp == 0) break;
+
+            const prev_fp: *const usize = @ptrFromInt(fp - 16);
+            const return_addr: *const usize = @ptrFromInt(fp - 8);
+            if (return_addr.* == 0) break;
+
+            log.err("  0x{x}", .{return_addr.*});
+            if (prev_fp.* <= fp) break;
+            fp = prev_fp.*;
         }
 
         log.err(

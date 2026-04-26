@@ -1,6 +1,5 @@
 const std = @import("std");
 const mem = std.mem;
-const meta = std.meta;
 
 const assert = @import("../diag.zig").assert;
 const fs = @import("../fs/fs.zig");
@@ -145,20 +144,21 @@ pub fn syscall() !void {
 
     errdefer trap_frame.a0 = @bitCast(@as(i64, -1));
 
-    const syscall_id = meta.intToEnum(
-        SyscallID,
-        trap_frame.a7,
-    ) catch |e| {
+    const syscall_id = b: {
+        inline for (@typeInfo(SyscallID).@"enum".fields) |field| {
+            if (trap_frame.a7 == field.value) break :b @as(SyscallID, @enumFromInt(field.value));
+        }
+
         log.err(
             "{d} {s}: Unknown syscall ID {d}",
             .{ proc.pid, proc.name, trap_frame.a7 },
         );
-        return e;
+        return error.UnknownSyscall;
     };
 
     errdefer |e| log.debug(
         "Syscall({s}) failed with {s}",
-        .{ std.enums.tagName(SyscallID, syscall_id) orelse "null", @errorName(e) },
+        .{ @tagName(syscall_id), @errorName(e) },
     );
 
     var tmp: u64 = 0;

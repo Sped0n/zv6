@@ -210,7 +210,7 @@ pub fn build(b: *std.Build) void {
     });
     gen_usys_s_cmd.setCwd(b.path("."));
     ulib_module.addCSourceFile(.{
-        .file = gen_usys_s_cmd.captureStdOut(),
+        .file = gen_usys_s_cmd.captureStdOut(.{}),
         .language = .assembly_with_preprocessor,
     });
 
@@ -292,8 +292,8 @@ pub fn build(b: *std.Build) void {
         .name = "initcode",
         .root_module = initcode_module,
     });
-    initcode_object.addAssemblyFile(b.path("user/initcode.S"));
-    initcode_object.addIncludePath(b.path("."));
+    initcode_module.addAssemblyFile(b.path("user/initcode.S"));
+    initcode_module.addIncludePath(b.path("."));
     initcode_object.link_z_max_page_size = 4096;
     initcode_object.entry = .{ .symbol_name = "start" };
     const initcode_bin = b.addObjCopy(

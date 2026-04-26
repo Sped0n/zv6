@@ -21,7 +21,7 @@
           devShells.default = pkgs.mkShellNoCC {
             name = "zv6";
             packages = with pkgs; [
-              zig_0_15
+              zig
               qemu
               lldb
               python3
