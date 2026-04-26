@@ -22,6 +22,7 @@
             name = "zv6";
             packages = with pkgs; [
               zig
+              zls
               qemu
               lldb
               python3
