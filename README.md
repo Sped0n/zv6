@@ -20,7 +20,7 @@ All commands assume you are in the project root.
 ### Prerequisites
 
 - Unix-like environment (Linux/macOS)
-- Zig 0.16
+- Zig 0.17.0
 - QEMU
 - Perl
 - LLDB (optional, for debugging)
