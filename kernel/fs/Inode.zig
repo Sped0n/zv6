@@ -135,7 +135,7 @@ var inode_table = struct {
     }
 }{
     .lock = undefined,
-    .items = [_]Self{Self{
+    .items = @splat(.{
         .dev = 0,
         .inum = 0,
         .ref = 0,
@@ -147,9 +147,9 @@ var inode_table = struct {
             .minor = 0,
             .nlink = 0,
             .size = 0,
-            .addrs = [_]u32{0} ** (fs.n_direct + 1),
+            .addrs = @splat(0),
         },
-    }} ** param.n_inode,
+    }),
 };
 
 pub fn init() void {

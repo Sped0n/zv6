@@ -40,7 +40,7 @@ inline fn readReg(offset: u64) u8 {
 const tx_buffer_size = 32;
 
 var tx_lock: SpinLock = undefined;
-var tx_buffer: [tx_buffer_size]u8 = [_]u8{0} ** 32;
+var tx_buffer: [tx_buffer_size]u8 = @splat(0);
 var tx_w: u64 = 0;
 var tx_r: u64 = 0;
 

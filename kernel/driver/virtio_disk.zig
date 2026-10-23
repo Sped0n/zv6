@@ -57,17 +57,17 @@ var disk = struct {
     .desc = undefined,
     .avail = undefined,
     .used = undefined,
-    .free = [_]bool{false} ** virtio.num,
+    .free = @splat(false),
     .used_index = 0,
-    .in_flight_operations = [_]InFlightOperation{InFlightOperation{
+    .in_flight_operations = @splat(.{
         .buffer = null,
         .status = .finished,
-    }} ** virtio.num,
-    .block_requests = [_]virtio.BlockRequest{virtio.BlockRequest{
+    }),
+    .block_requests = @splat(.{
         .type = .in,
         .sector = 0,
         .reserved = 0,
-    }} ** virtio.num,
+    }),
     .lock = undefined,
 };
 
@@ -86,32 +86,32 @@ pub fn init() void {
 
     // set ACKNOWLEDGE status bit
     // status |= flagsMask(virtio.Status, .{.acknowledge});
-    status |= @intFromEnum(virtio.Status.acknowledge);
+    status |= @backingInt(virtio.Status.acknowledge);
     virtio.MMIO.write(.status, status);
 
     // set DRIVER status bit
-    status |= @intFromEnum(virtio.Status.driver);
+    status |= @backingInt(virtio.Status.driver);
     virtio.MMIO.write(.status, status);
 
     // negotiate features
     var features = virtio.MMIO.read(.device_features);
-    const unsupported = @intFromEnum(virtio.Feature.block_ro) |
-        @intFromEnum(virtio.Feature.block_scsi) |
-        @intFromEnum(virtio.Feature.block_config_wce) |
-        @intFromEnum(virtio.Feature.block_mq) |
-        @intFromEnum(virtio.Feature.any_layout) |
-        @intFromEnum(virtio.Feature.ring_event_index) |
-        @intFromEnum(virtio.Feature.ring_indirect_desc);
+    const unsupported = @backingInt(virtio.Feature.block_ro) |
+        @backingInt(virtio.Feature.block_scsi) |
+        @backingInt(virtio.Feature.block_config_wce) |
+        @backingInt(virtio.Feature.block_mq) |
+        @backingInt(virtio.Feature.any_layout) |
+        @backingInt(virtio.Feature.ring_event_index) |
+        @backingInt(virtio.Feature.ring_indirect_desc);
     features &= ~unsupported;
     virtio.MMIO.write(.driver_features, features);
 
     // tell device that feature negotiation is complete.
-    status |= @intFromEnum(virtio.Status.features_ok);
+    status |= @backingInt(virtio.Status.features_ok);
     virtio.MMIO.write(.status, status);
 
     // re-read status to ensure features_ok is set.
     status = virtio.MMIO.read(.status);
-    assert(status & @intFromEnum(virtio.Status.features_ok) != 0);
+    assert(status & @backingInt(virtio.Status.features_ok) != 0);
 
     // initialize queue 0.
     virtio.MMIO.write(.queue_sel, 0);
@@ -158,7 +158,7 @@ pub fn init() void {
     for (0..virtio.num) |i| disk.free[i] = true;
 
     // tell device we're completely ready.
-    status |= @intFromEnum(virtio.Status.driver_ok);
+    status |= @backingInt(virtio.Status.driver_ok);
     virtio.MMIO.write(.status, status);
 
     log.info("VirtIO disk initialized", .{});

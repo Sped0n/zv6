@@ -40,7 +40,7 @@ pub fn initHardwareThread() void {
 /// called from trampoline.S
 pub fn userTrap() callconv(.c) void {
     // must from user mode
-    assert(riscv.sstatus.read() & @intFromEnum(riscv.SStatusValue.spp) == 0);
+    assert(riscv.sstatus.read() & @backingInt(riscv.SStatusValue.spp) == 0);
 
     // send interrupt and exceptions to kernelTrap(),
     // since we're now in the kernel.
@@ -122,8 +122,8 @@ pub fn userTrapRet() callconv(.c) void {
 
     // set S Previous Privilege mode to User.
     var sstatus = riscv.sstatus.read();
-    sstatus &= ~@intFromEnum(riscv.SStatusValue.spp); // clear SPP to 0 for user mode
-    sstatus |= @intFromEnum(riscv.SStatusValue.spie); // enable interrupts in user mode
+    sstatus &= ~@backingInt(riscv.SStatusValue.spp); // clear SPP to 0 for user mode
+    sstatus |= @backingInt(riscv.SStatusValue.spie); // enable interrupts in user mode
     riscv.sstatus.write(sstatus);
 
     // set S Exception Program Counter to the saved user PC.
@@ -151,7 +151,7 @@ pub export fn kernelTrap() callconv(.c) void {
     const scause = riscv.scause.read();
 
     // must from supervisor mode
-    assert(sstatus & @intFromEnum(riscv.SStatusValue.spp) != 0);
+    assert(sstatus & @backingInt(riscv.SStatusValue.spp) != 0);
 
     // interrupts should be disabled now
     assert(!riscv.intrGet());

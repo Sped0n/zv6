@@ -52,7 +52,7 @@ var journal = struct {
     .dev = undefined,
     .header = Header{
         .n = 0,
-        .block = [_]u32{0} ** param.log_size,
+        .block = @splat(0),
     },
 };
 

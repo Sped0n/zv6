@@ -57,7 +57,7 @@ pub fn walk(
             )
         ];
 
-        if (pte_ptr.* & @intFromEnum(riscv.PteFlag.v) != 0) {
+        if (pte_ptr.* & @backingInt(riscv.PteFlag.v) != 0) {
             current_page_table = @ptrFromInt(riscv.paFromPte(pte_ptr.*));
             continue;
         }
@@ -69,7 +69,7 @@ pub fn walk(
         current_page_table = @ptrCast(page);
         pte_ptr.* = riscv.pteFromPa(
             @intFromPtr(current_page_table),
-        ) | @intFromEnum(riscv.PteFlag.v);
+        ) | @backingInt(riscv.PteFlag.v);
     }
 
     return &current_page_table[riscv.pageTableIdxFromVa(0, virt_addr)];
@@ -87,8 +87,8 @@ pub fn walkAddr(page_table: riscv.PageTable, virt_addr: u64) !u64 {
         false,
     )).*;
 
-    if ((pte & @intFromEnum(riscv.PteFlag.v)) == 0) return Error.PTEFlagNotV;
-    if ((pte & @intFromEnum(riscv.PteFlag.u)) == 0) return Error.PTEFlagNotU;
+    if ((pte & @backingInt(riscv.PteFlag.v)) == 0) return Error.PTEFlagNotV;
+    if ((pte & @backingInt(riscv.PteFlag.u)) == 0) return Error.PTEFlagNotU;
 
     const phy_addr = riscv.paFromPte(pte);
     return phy_addr;
@@ -125,11 +125,11 @@ pub fn mapPages(
         );
 
         // try to remap existing page
-        assert(pte_ptr.* & @intFromEnum(riscv.PteFlag.v) == 0);
+        assert(pte_ptr.* & @backingInt(riscv.PteFlag.v) == 0);
 
         pte_ptr.* = riscv.pteFromPa(
             phy_anchor,
-        ) | permission | @intFromEnum(
+        ) | permission | @backingInt(
             riscv.PteFlag.v,
         );
     }
@@ -138,10 +138,10 @@ pub fn mapPages(
 /// Recursively free page-table pages.
 /// All leaf mappings must already have been removed.
 pub fn freeWalk(page_table: riscv.PageTable) void {
-    const v_permission = @intFromEnum(riscv.PteFlag.v);
-    const rwx_permission = @intFromEnum(riscv.PteFlag.r) |
-        @intFromEnum(riscv.PteFlag.w) |
-        @intFromEnum(riscv.PteFlag.x);
+    const v_permission = @backingInt(riscv.PteFlag.v);
+    const rwx_permission = @backingInt(riscv.PteFlag.r) |
+        @backingInt(riscv.PteFlag.w) |
+        @backingInt(riscv.PteFlag.x);
     // there are 2^9 = 512 PTEs in a page table
     for (0..512) |i| {
         const pte = page_table[i];
@@ -165,14 +165,14 @@ pub const kvm = struct {
         const mem: *[4096]u8 = @ptrCast(kpgtbl);
         @memset(mem, 0);
 
-        const rw_permission: u64 = @intFromEnum(
+        const rw_permission: u64 = @backingInt(
             riscv.PteFlag.r,
-        ) | @intFromEnum(
+        ) | @backingInt(
             riscv.PteFlag.w,
         );
-        const rx_permission: u64 = @intFromEnum(
+        const rx_permission: u64 = @backingInt(
             riscv.PteFlag.r,
-        ) | @intFromEnum(
+        ) | @backingInt(
             riscv.PteFlag.x,
         );
 
@@ -381,11 +381,11 @@ pub const uvm = struct {
 
             // not mapped
             assert(
-                pte_ptr.* & @intFromEnum(riscv.PteFlag.v) != 0,
+                pte_ptr.* & @backingInt(riscv.PteFlag.v) != 0,
             );
             // not a leaf
             assert(
-                riscv.pteFlags(pte_ptr.*) != @intFromEnum(riscv.PteFlag.v),
+                riscv.pteFlags(pte_ptr.*) != @backingInt(riscv.PteFlag.v),
             );
 
             if (do_free) {
@@ -413,10 +413,10 @@ pub const uvm = struct {
         errdefer kmem.free(page);
         @memset(page, 0);
 
-        const permission: u64 = @intFromEnum(riscv.PteFlag.w) |
-            @intFromEnum(riscv.PteFlag.r) |
-            @intFromEnum(riscv.PteFlag.x) |
-            @intFromEnum(riscv.PteFlag.u);
+        const permission: u64 = @backingInt(riscv.PteFlag.w) |
+            @backingInt(riscv.PteFlag.r) |
+            @backingInt(riscv.PteFlag.x) |
+            @backingInt(riscv.PteFlag.u);
 
         mapPages(
             page_table,
@@ -443,8 +443,8 @@ pub const uvm = struct {
 
         errdefer _ = uvm.dealloc(page_table, size, rounded_old_size);
 
-        const ru_permission = @intFromEnum(riscv.PteFlag.r) |
-            @intFromEnum(riscv.PteFlag.u);
+        const ru_permission = @backingInt(riscv.PteFlag.r) |
+            @backingInt(riscv.PteFlag.u);
 
         while (size < new_size) : (size += riscv.pg_size) {
             const page = try kmem.alloc();
@@ -521,7 +521,7 @@ pub const uvm = struct {
             ) catch unreachable).*;
 
             // page not exist
-            assert(pte & @intFromEnum(riscv.PteFlag.v) != 0);
+            assert(pte & @backingInt(riscv.PteFlag.v) != 0);
 
             const phy_addr = riscv.paFromPte(pte);
             const flags = riscv.pteFlags(pte);
@@ -559,7 +559,7 @@ pub const uvm = struct {
             page_table,
             virt_addr,
             false,
-        ) catch unreachable).* &= ~@intFromEnum(riscv.PteFlag.u);
+        ) catch unreachable).* &= ~@backingInt(riscv.PteFlag.u);
     }
 
     /// Copy from kernel to user.
@@ -583,13 +583,13 @@ pub const uvm = struct {
             const pte_ptr = try walk(page_table, virt_addr, false);
             const pte = pte_ptr.*;
 
-            if (pte & @intFromEnum(
+            if (pte & @backingInt(
                 riscv.PteFlag.v,
             ) == 0) return Error.PTEFlagNotV;
-            if (pte & @intFromEnum(
+            if (pte & @backingInt(
                 riscv.PteFlag.u,
             ) == 0) return Error.PTEFlagNotU;
-            if (pte & @intFromEnum(
+            if (pte & @backingInt(
                 riscv.PteFlag.w,
             ) == 0) return Error.PTEFlagNotW;
 

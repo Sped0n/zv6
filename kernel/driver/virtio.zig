@@ -41,14 +41,14 @@ pub const MMIO = struct {
 
     pub inline fn read(offset: Self.Offset) u32 {
         const ptr: *volatile u32 = @ptrFromInt(
-            memlayout.virtio0 + @intFromEnum(offset),
+            memlayout.virtio0 + @backingInt(offset),
         );
         return ptr.*;
     }
 
     pub inline fn write(offset: Self.Offset, value: u32) void {
         const ptr: *volatile u32 = @ptrFromInt(
-            memlayout.virtio0 + @intFromEnum(offset),
+            memlayout.virtio0 + @backingInt(offset),
         );
         ptr.* = value;
     }

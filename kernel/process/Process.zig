@@ -60,7 +60,7 @@ opened_files: [param.n_ofile]?*fs.File, // Opened files
 cwd: ?*fs.Inode, // Current directory
 name: [16]u8, // Process name (debugging)
 
-pub var procs: [param.n_proc]Self = [_]Self{Self{
+pub var procs: [param.n_proc]Self = @splat(.{
     .lock = undefined,
     .state = .unused,
     .chan_addr = 0,
@@ -73,10 +73,10 @@ pub var procs: [param.n_proc]Self = [_]Self{Self{
     .page_table = null,
     .trap_frame = null,
     .context = undefined,
-    .opened_files = [_]?*fs.File{null} ** param.n_ofile,
+    .opened_files = @splat(null),
     .cwd = null,
-    .name = [_]u8{0} ** 16,
-}} ** param.n_proc;
+    .name = @splat(0),
+});
 
 var init_proc: *Self = undefined;
 
@@ -115,9 +115,9 @@ pub fn mapStacks(kpgtbl: riscv.PageTable) !void {
             virt_addr,
             @intFromPtr(page0),
             riscv.pg_size,
-            @intFromEnum(
+            @backingInt(
                 riscv.PteFlag.r,
-            ) | @intFromEnum(
+            ) | @backingInt(
                 riscv.PteFlag.w,
             ),
         );
@@ -126,9 +126,9 @@ pub fn mapStacks(kpgtbl: riscv.PageTable) !void {
             virt_addr + riscv.pg_size,
             @intFromPtr(page1),
             riscv.pg_size,
-            @intFromEnum(
+            @backingInt(
                 riscv.PteFlag.r,
-            ) | @intFromEnum(
+            ) | @backingInt(
                 riscv.PteFlag.w,
             ),
         );
@@ -256,7 +256,7 @@ pub fn createPageTable(self: *Self) !riscv.PageTable {
         memlayout.trampoline,
         riscv.pg_size,
         @intFromPtr(trampoline),
-        @intFromEnum(riscv.PteFlag.r) | @intFromEnum(riscv.PteFlag.x),
+        @backingInt(riscv.PteFlag.r) | @backingInt(riscv.PteFlag.x),
     );
 
     // map the trapframe page just below the trampoline page, for
@@ -266,7 +266,7 @@ pub fn createPageTable(self: *Self) !riscv.PageTable {
         memlayout.trap_frame,
         riscv.pg_size,
         @intFromPtr(self.trap_frame),
-        @intFromEnum(riscv.PteFlag.r) | @intFromEnum(riscv.PteFlag.w),
+        @backingInt(riscv.PteFlag.r) | @backingInt(riscv.PteFlag.w),
     );
 
     return page_table;
@@ -319,7 +319,7 @@ pub fn growCurrent(n: i32) !void {
             proc.page_table.?,
             size,
             size + @abs(n),
-            @intFromEnum(riscv.PteFlag.w),
+            @backingInt(riscv.PteFlag.w),
         );
     } else if (n < 0) {
         size = vm.uvm.dealloc(

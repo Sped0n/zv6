@@ -17,13 +17,13 @@ pub const std_options = std.Options{
 };
 pub const panic = std.debug.FullPanic(diag.panicFn);
 
-export var stack0 align(16) = [_]u8{0} ** (4096 * param.n_cpu);
+export var stack0: [4096 * param.n_cpu]u8 align(16) = @splat(0);
 
 export fn start() callconv(.c) noreturn {
     // set M Previous Privilege mode to Supervisor. for mret.
     var mstatus = riscv.mstatus.read();
-    mstatus &= ~(@intFromEnum(riscv.MStatusValue.mpp_machine_or_mask));
-    mstatus |= @intFromEnum(riscv.MStatusValue.mpp_supervisor);
+    mstatus &= ~(@backingInt(riscv.MStatusValue.mpp_machine_or_mask));
+    mstatus |= @backingInt(riscv.MStatusValue.mpp_supervisor);
     riscv.mstatus.write(mstatus);
 
     // set M Exception Program Counter to main, for mret.
@@ -36,11 +36,11 @@ export fn start() callconv(.c) noreturn {
     riscv.medeleg.write(@as(u64, 0xffff));
     riscv.mideleg.write(@as(u64, 0xffff));
     riscv.sie.write(
-        riscv.sie.read() | @intFromEnum(
+        riscv.sie.read() | @backingInt(
             riscv.SieValue.seie,
-        ) | @intFromEnum(
+        ) | @backingInt(
             riscv.SieValue.stie,
-        ) | @intFromEnum(
+        ) | @backingInt(
             riscv.SieValue.ssie,
         ),
     );
@@ -65,7 +65,7 @@ export fn start() callconv(.c) noreturn {
 
 fn timerInit() void {
     // enable supervisor-mode timer interrupts.
-    riscv.mie.write(riscv.mie.read() | @intFromEnum(riscv.SieValue.stie));
+    riscv.mie.write(riscv.mie.read() | @backingInt(riscv.SieValue.stie));
 
     // enable the sstc extension (i.e. simecmp).
     riscv.menvcfg.write(riscv.menvcfg.read() | @as(u64, 1 << 63));

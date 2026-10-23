@@ -144,11 +144,7 @@ pub fn syscall() !void {
 
     errdefer trap_frame.a0 = @bitCast(@as(i64, -1));
 
-    const syscall_id = b: {
-        inline for (@typeInfo(SyscallID).@"enum".fields) |field| {
-            if (trap_frame.a7 == field.value) break :b @as(SyscallID, @enumFromInt(field.value));
-        }
-
+    const syscall_id = std.enums.fromInt(SyscallID, trap_frame.a7) orelse {
         log.err(
             "{d} {s}: Unknown syscall ID {d}",
             .{ proc.pid, proc.name, trap_frame.a7 },
@@ -156,36 +152,34 @@ pub fn syscall() !void {
         return error.UnknownSyscall;
     };
 
-    errdefer |e| log.debug(
-        "Syscall({s}) failed with {s}",
-        .{ @tagName(syscall_id), @errorName(e) },
-    );
-
-    var tmp: u64 = 0;
-    switch (syscall_id) {
-        .fork => tmp = try sysproc.fork(),
-        .exit => tmp = sysproc.exit(),
-        .wait => tmp = try sysproc.wait(),
-        .pipe => tmp = try sysfile.pipe(),
-        .read => tmp = try sysfile.read(),
-        .kill => tmp = try sysproc.kill(),
-        .exec => tmp = try sysfile.exec(),
-        .fstat => tmp = try sysfile.fileStat(),
-        .chdir => tmp = try sysfile.chdir(),
-        .dup => tmp = try sysfile.dup(),
-        .getpid => tmp = try sysproc.getPid(),
-        .sbrk => tmp = try sysproc.sbrk(),
-        .sleep => tmp = try sysproc.sleep(),
-        .uptime => tmp = sysproc.uptime(),
-        .open => tmp = try sysfile.open(),
-        .write => tmp = try sysfile.write(),
-        .mknod => tmp = try sysfile.mknod(),
-        .unlink => tmp = try sysfile.unlink(),
-        .link => tmp = try sysfile.link(),
-        .mkdir => tmp = try sysfile.mkdir(),
-        .close => tmp = try sysfile.close(),
-    }
-    trap_frame.a0 = tmp;
-
-    return;
+    const result: anyerror!u64 = switch (syscall_id) {
+        .fork => sysproc.fork(),
+        .exit => sysproc.exit(),
+        .wait => sysproc.wait(),
+        .pipe => sysfile.pipe(),
+        .read => sysfile.read(),
+        .kill => sysproc.kill(),
+        .exec => sysfile.exec(),
+        .fstat => sysfile.fileStat(),
+        .chdir => sysfile.chdir(),
+        .dup => sysfile.dup(),
+        .getpid => sysproc.getPid(),
+        .sbrk => sysproc.sbrk(),
+        .sleep => sysproc.sleep(),
+        .uptime => sysproc.uptime(),
+        .open => sysfile.open(),
+        .write => sysfile.write(),
+        .mknod => sysfile.mknod(),
+        .unlink => sysfile.unlink(),
+        .link => sysfile.link(),
+        .mkdir => sysfile.mkdir(),
+        .close => sysfile.close(),
+    };
+    trap_frame.a0 = result catch |err| {
+        log.debug(
+            "Syscall({s}) failed with {s}",
+            .{ @tagName(syscall_id), @errorName(err) },
+        );
+        return err;
+    };
 }

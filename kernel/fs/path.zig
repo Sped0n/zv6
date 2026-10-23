@@ -126,7 +126,7 @@ fn lookup(path: []const u8, comptime is_parent: bool, out_name: []u8) !*fs.Inode
 }
 
 pub fn toInode(path: []const u8) !*fs.Inode {
-    var tmp: [fs.dir_size]u8 = [_]u8{0} ** fs.dir_size;
+    var tmp: [fs.dir_size]u8 = @splat(0);
     return lookup(path, false, &tmp);
 }
 

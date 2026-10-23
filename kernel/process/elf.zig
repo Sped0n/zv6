@@ -88,11 +88,11 @@ fn loadSegment(
 
 inline fn permFromFlags(flags: u32) u64 {
     var perm: u64 = 0;
-    if (flags & @intFromEnum(ProgramHeaderFlag.exec) != 0) {
-        perm = @intFromEnum(riscv.PteFlag.x);
+    if (flags & @backingInt(ProgramHeaderFlag.exec) != 0) {
+        perm = @backingInt(riscv.PteFlag.x);
     }
-    if (flags & @intFromEnum(ProgramHeaderFlag.write) != 0) {
-        perm |= @intFromEnum(riscv.PteFlag.w);
+    if (flags & @backingInt(ProgramHeaderFlag.write) != 0) {
+        perm |= @backingInt(riscv.PteFlag.w);
     }
     return perm;
 }
@@ -195,7 +195,7 @@ pub fn exec(_path: []const u8, argv: []const kmem.Page) !u64 {
         new_page_table.?,
         size,
         size + stack_bytes,
-        @intFromEnum(riscv.PteFlag.w),
+        @backingInt(riscv.PteFlag.w),
     );
 
     // Clear the guard page.
@@ -205,7 +205,7 @@ pub fn exec(_path: []const u8, argv: []const kmem.Page) !u64 {
     var sp = size;
     const stack_base = sp - param.user_stack * riscv.pg_size;
 
-    var ustack = [_]u64{0} ** param.max_arg;
+    var ustack: [param.max_arg]u64 = @splat(0);
     const argc: usize = argv.len;
 
     for (argv, 0..) |arg, i| {

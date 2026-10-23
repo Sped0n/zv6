@@ -31,7 +31,7 @@ var buffer_cache = struct {
     head: Self,
 }{
     .lock = undefined,
-    .buffers = [_]Self{Self{
+    .buffers = @splat(.{
         .valid = false,
         .owned_by_disk = false,
         .dev = 0,
@@ -40,8 +40,8 @@ var buffer_cache = struct {
         .refcnt = 0,
         .prev = undefined,
         .next = undefined,
-        .data = [_]u8{0} ** fs.block_size,
-    }} ** param.n_buf,
+        .data = @splat(0),
+    }),
     .head = Self{
         .valid = false,
         .owned_by_disk = false,
@@ -51,7 +51,7 @@ var buffer_cache = struct {
         .refcnt = 0,
         .prev = undefined,
         .next = undefined,
-        .data = [_]u8{0} ** fs.block_size,
+        .data = @splat(0),
     },
 };
 

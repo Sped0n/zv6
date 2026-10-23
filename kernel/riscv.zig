@@ -244,17 +244,17 @@ pub const time = CSRRegister("time", .read_only);
 
 /// Enable device interrupts
 pub inline fn intrOn() void {
-    sstatus.write(sstatus.read() | @intFromEnum(SStatusValue.sie));
+    sstatus.write(sstatus.read() | @backingInt(SStatusValue.sie));
 }
 
 /// Disable device interrupts
 pub inline fn intrOff() void {
-    sstatus.write(sstatus.read() & ~@intFromEnum(SStatusValue.sie));
+    sstatus.write(sstatus.read() & ~@backingInt(SStatusValue.sie));
 }
 
 /// Check if device interrupts are enabled
 pub inline fn intrGet() bool {
-    return (sstatus.read() & @intFromEnum(SStatusValue.sie)) != 0;
+    return (sstatus.read() & @backingInt(SStatusValue.sie)) != 0;
 }
 
 pub inline fn intrDisablePush() void {

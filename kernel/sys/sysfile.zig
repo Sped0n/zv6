@@ -332,13 +332,13 @@ pub fn open() !u64 {
     defer fs.journal.batch.end();
 
     var inode: *fs.Inode = undefined;
-    if (omode & @intFromEnum(fs.OpenMode.create) != 0) {
+    if (omode & @backingInt(fs.OpenMode.create) != 0) {
         inode = try create(path_slice, .file, 0, 0);
     } else {
         inode = try fs.path.toInode(path_slice);
         inode.lock();
         if (inode.dinode.type == .directory and
-            omode != @intFromEnum(fs.OpenMode.read_only))
+            omode != @backingInt(fs.OpenMode.read_only))
         {
             // Users are not allowed to open a read-only directory for writing.
             inode.unlockPut();
@@ -369,12 +369,12 @@ pub fn open() !u64 {
         file.offset = 0;
     }
     file.inode = inode;
-    file.readable = !(omode & @intFromEnum(fs.OpenMode.write_only) != 0);
-    file.writable = (omode & @intFromEnum(fs.OpenMode.write_only) != 0) or
-        (omode & @intFromEnum(fs.OpenMode.read_write) != 0);
+    file.readable = !(omode & @backingInt(fs.OpenMode.write_only) != 0);
+    file.writable = (omode & @backingInt(fs.OpenMode.write_only) != 0) or
+        (omode & @backingInt(fs.OpenMode.read_write) != 0);
 
     // Handle truncation.
-    if (omode & @intFromEnum(fs.OpenMode.truncate) != 0 and
+    if (omode & @backingInt(fs.OpenMode.truncate) != 0 and
         inode.dinode.type == .file) inode.truncate();
 
     return fd;
@@ -450,7 +450,7 @@ pub fn exec() !u64 {
 
     const uargv: u64 = syscall.argument.as(u64, 1);
 
-    var argv = [_]kmem.Page{undefined} ** param.max_arg;
+    var argv: [param.max_arg]kmem.Page = undefined;
     var argc: usize = 0;
 
     defer {

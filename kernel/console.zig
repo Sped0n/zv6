@@ -10,7 +10,7 @@ const delete = 0x7f;
 
 var lock: SpinLock = undefined;
 const buffer_size = 128;
-var buffer: [buffer_size]u8 = [_]u8{0} ** buffer_size;
+var buffer: [buffer_size]u8 = @splat(0);
 var read_index: u32 = 0;
 var write_index: u32 = 0;
 var edit_index: u32 = 0;
@@ -173,7 +173,7 @@ pub fn init() void {
 
     // connect read and write system calls
     // to console.read and console.write.
-    fs.File.device_switches[@intFromEnum(fs.File.DeviceSwitchID.console)] = .{
+    fs.File.device_switches[@backingInt(fs.File.DeviceSwitchID.console)] = .{
         .read = read,
         .write = write,
     };

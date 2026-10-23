@@ -11,14 +11,14 @@ interrupt: struct {
     is_enabled: bool, // Were interrupts enabled before push_off()?
 },
 
-var cpus: [param.n_cpu]Self = [_]Self{Self{
+var cpus: [param.n_cpu]Self = @splat(.{
     .proc = null,
     .context = undefined,
     .interrupt = .{
         .nested_counter = 0,
         .is_enabled = false,
     },
-}} ** param.n_cpu; // container level variable
+}); // container level variable
 
 const Self = @This();
 
