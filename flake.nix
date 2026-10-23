@@ -1,6 +1,6 @@
 {
   description = "zv6";
-  inputs.nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1";
+  inputs.nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
   outputs =
     {
       nixpkgs,
