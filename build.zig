@@ -283,7 +283,7 @@ pub fn build(b: *std.Build) void {
     }
 
     // initcode ----------------------------------------------------------------
-    const initcode_module = b.addModule("kernel", .{
+    const initcode_module = b.createModule(.{
         .root_source_file = null,
         .target = rv64,
         .optimize = optimize,
@@ -298,7 +298,7 @@ pub fn build(b: *std.Build) void {
     initcode_object.entry = .{ .symbol_name = "start" };
     const initcode_bin = b.addObjCopy(
         initcode_object.getEmittedBin(),
-        .{ .format = .bin },
+        .{ .format = .binary },
     );
     gen_initcode_step.dependOn(&b.addInstallBinFile(
         initcode_bin.getOutput(),
